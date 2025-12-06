@@ -1,0 +1,23 @@
+{
+  "name": "photo-server",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "expo": "^54.0.27",
+    "expo-file-system": "~19.0.20",
+    "expo-sharing": "~14.0.8",
+    "express": "^5.2.1",
+    "multer": "^2.0.2",
+    "tweetnacl": "^1.0.3",
+    "tweetnacl-util": "^0.15.1"
+  }
+}

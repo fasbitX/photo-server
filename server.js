@@ -158,7 +158,7 @@ app.post('/admin/login', (req, res) => {
 
   if (ok) {
     req.session.isAdmin = true;
-    return res.redirect('/admin/dashboard');  // CHANGED: redirect to /admin/dashboard
+    return res.redirect('/admin/dashboard');
   }
 
   return res.send(renderAdminLoginPage('Invalid username or password'));
@@ -196,16 +196,14 @@ async function startServer() {
      *  REGISTER ROUTE MODULES
      * ────────────────────────────────────────────── */
 
-    // CRITICAL: Register admin routes BEFORE user routes
-    // This prevents the user /dashboard from intercepting admin /dashboard
-    
-    // Admin routes (/admin/*, requires admin login) - REGISTERED FIRST
+    // CRITICAL: Admin routes registered FIRST to avoid conflicts
+    // Admin routes (/admin/*, requires admin login)
     registerAdminRoutes(app, { requireAdmin, state });
 
     // User authentication routes (/, /login, /signup, etc.)
     registerAuthRoutes(app);
 
-    // User dashboard routes (/dashboard, /my-photos, /transactions, /account) - REGISTERED SECOND
+    // User dashboard routes (/dashboard, /my-photos, /transactions, /account)
     registerUserDashboardRoutes(app);
 
     // Upload routes for mobile app
@@ -230,7 +228,7 @@ async function startServer() {
 ╠═══════════════════════════════════════════════╣
 ║  Host: ${HOST}
 ║  Port: ${PORT}
-║  User Login:  http://${HOST}:${PORT}
+║  User Login:  http://${HOST}:${PORT}/login
 ║  Admin Login: http://${HOST}:${PORT}/admin/login
 ║  Admin Panel: http://${HOST}:${PORT}/admin/dashboard
 ╚═══════════════════════════════════════════════╝

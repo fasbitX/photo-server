@@ -785,12 +785,12 @@ function registerAdminRoutes(app, { requireAdmin, state }) {
   // protect /uploads
   app.use('/uploads', requireAdmin, express.static(uploadDir));
 
-   // Redirect /admin to /dashboard
-  app.get('/admin/dashboard', requireAdmin, (req, res) => {
-    res.redirect('/dashboard');
+  // Redirect /admin to admin dashboard
+  app.get('/admin', requireAdmin, (req, res) => {
+    res.redirect('/admin/dashboard');
   });
 
-  // dashboard
+  // admin dashboard
   app.get('/admin/dashboard', requireAdmin, (req, res) => {
     const rawFolder = req.query.folder || '';
     const currentFolder = sanitizeFolderName(rawFolder);
@@ -832,7 +832,7 @@ function registerAdminRoutes(app, { requireAdmin, state }) {
     } catch (err) {
       console.error('Failed to create folder', err);
     }
-    res.redirect('/dashboard?folder=' + encodeURIComponent(folderName));
+    res.redirect('/admin/dashboard?folder=' + encodeURIComponent(folderName));
   });
 
   // move file

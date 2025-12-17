@@ -245,7 +245,7 @@ function getBaseStyles() {
 function renderNavbar(user, activePage = 'dashboard') {
   return `
     <div class="navbar">
-      <h1>FasBit</h1>
+      <h1>Fasbit</h1>
       <div class="nav-links">
         <a href="/dashboard" style="${activePage === 'dashboard' ? 'color: #667eea;' : ''}">Dashboard</a>
         <a href="/my-photos" style="${activePage === 'photos' ? 'color: #667eea;' : ''}">My Photos</a>
@@ -271,7 +271,7 @@ function renderDashboard(user, transactions) {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Dashboard - FasBit</title>
+  <title>Dashboard - Fasbit</title>
   ${getBaseStyles()}
 </head>
 <body>
@@ -345,7 +345,7 @@ function renderPhotosPage(user, photos) {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>My Photos - FasBit</title>
+  <title>My Photos - Fasbit</title>
   ${getBaseStyles()}
 </head>
 <body>
@@ -379,7 +379,7 @@ function renderAccountPage(user) {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Account Settings - FasBit</title>
+  <title>Account Settings - Fasbit</title>
   ${getBaseStyles()}
 </head>
 <body>
@@ -457,7 +457,7 @@ function renderTransactionsPage(user, transactions) {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Transactions - FasBit</title>
+  <title>Transactions - Fasbit</title>
   ${getBaseStyles()}
 </head>
 <body>

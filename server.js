@@ -6,8 +6,11 @@ const cors = require('cors');
 const session = require('express-session');
 const path = require('path');
 
+const { initDatabase } = require('./db-users');
 const { registerUploadRoutes } = require('./uploadRoutes');
 const { registerAdminRoutes } = require('./adminRoutes');
+const { registerAuthRoutes } = require('./routes-auth');
+const { registerUserDashboardRoutes } = require('./routes-user-dashboard');
 
 const app = express();
 
@@ -41,26 +44,31 @@ app.use(
 
 app.use(
   session({
-    secret: process.env.SESSION_SECRET || 'dev-secret',
+    secret: process.env.SESSION_SECRET || 'dev-secret-change-in-production',
     resave: false,
     saveUninitialized: false,
+    cookie: {
+      secure: process.env.NODE_ENV === 'production', // HTTPS only in production
+      httpOnly: true,
+      maxAge: 24 * 60 * 60 * 1000 // 24 hours
+    }
   })
 );
 
 /* ──────────────────────────────────────────────
- *  AUTH HELPERS
+ *  ADMIN AUTH HELPERS
  * ────────────────────────────────────────────── */
 
 function requireAdmin(req, res, next) {
   if (req.session && req.session.isAdmin) return next();
-  return res.redirect('/login');
+  return res.redirect('/admin/login');
 }
 
 /* ──────────────────────────────────────────────
- *  LOGIN / LOGOUT / ROOT
+ *  ADMIN LOGIN / LOGOUT
  * ────────────────────────────────────────────── */
 
-function renderLoginPage(errorMessage = '') {
+function renderAdminLoginPage(errorMessage = '') {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -118,7 +126,7 @@ function renderLoginPage(errorMessage = '') {
   </style>
 </head>
 <body>
-  <form class="card" method="POST" action="/login">
+  <form class="card" method="POST" action="/admin/login">
     <h1>Admin Login</h1>
     <label>
       Username
@@ -139,11 +147,11 @@ function renderLoginPage(errorMessage = '') {
 </html>`;
 }
 
-app.get('/login', (req, res) => {
-  res.send(renderLoginPage());
+app.get('/admin/login', (req, res) => {
+  res.send(renderAdminLoginPage());
 });
 
-app.post('/login', (req, res) => {
+app.post('/admin/login', (req, res) => {
   const { username, password } = req.body || {};
 
   const ok = username === ADMIN_USER && password === ADMIN_PASS;
@@ -153,20 +161,13 @@ app.post('/login', (req, res) => {
     return res.redirect('/dashboard');
   }
 
-  return res.send(renderLoginPage('Invalid username or password'));
+  return res.send(renderAdminLoginPage('Invalid username or password'));
 });
 
-app.post('/logout', (req, res) => {
+app.post('/admin/logout', (req, res) => {
   req.session.destroy(() => {
-    res.redirect('/login');
+    res.redirect('/admin/login');
   });
-});
-
-app.get('/', (req, res) => {
-  if (req.session && req.session.isAdmin) {
-    return res.redirect('/dashboard');
-  }
-  return res.redirect('/login');
 });
 
 /* ──────────────────────────────────────────────
@@ -179,18 +180,52 @@ const state = {
 };
 
 /* ──────────────────────────────────────────────
- *  REGISTER ROUTE MODULES
+ *  INITIALIZE DATABASE
  * ────────────────────────────────────────────── */
 
-registerUploadRoutes(app);                     // /upload, chunk endpoints
-registerAdminRoutes(app, { requireAdmin, state }); // dashboard, folders, /uploads, port change
+async function startServer() {
+  try {
+    // Initialize user database
+    await initDatabase();
+    console.log('User database initialized');
+    
+    /* ──────────────────────────────────────────────
+     *  REGISTER ROUTE MODULES
+     * ────────────────────────────────────────────── */
+    
+    // User authentication routes (/, /login, /signup, etc.)
+    registerAuthRoutes(app);
+    
+    // User dashboard routes (/dashboard, /my-photos, /transactions, /account)
+    registerUserDashboardRoutes(app);
+    
+    // Upload routes for mobile app
+    registerUploadRoutes(app);
+    
+    // Admin routes (/admin/*, requires admin login)
+    registerAdminRoutes(app, { requireAdmin, state });
+    
+    /* ──────────────────────────────────────────────
+     *  START SERVER
+     * ────────────────────────────────────────────── */
+    
+    state.server = app.listen(state.currentPort, () => {
+      console.log(`
+╔═══════════════════════════════════════════════╗
+║           SERVER STARTED                      ║
+╠═══════════════════════════════════════════════╣
+║  Port: ${state.currentPort}                            ║
+║  User Login: http://localhost:${state.currentPort}         ║
+║  Admin Login: http://localhost:${state.currentPort}/admin  ║
+╚═══════════════════════════════════════════════╝
+      `);
+    });
+  } catch (err) {
+    console.error('Failed to start server:', err);
+    process.exit(1);
+  }
+}
 
-/* ──────────────────────────────────────────────
- *  START SERVER
- * ────────────────────────────────────────────── */
-
-state.server = app.listen(state.currentPort, () => {
-  console.log('Server listening on port', state.currentPort);
-});
+startServer();
 
 module.exports = app;

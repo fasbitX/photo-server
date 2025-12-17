@@ -1,146 +1,196 @@
 // server.js
 require('dotenv').config();
+
 const express = require('express');
 const cors = require('cors');
-const multer = require('multer');
-const fs = require('fs');
+const session = require('express-session');
 const path = require('path');
-const nacl = require('tweetnacl');
-const util = require('tweetnacl-util');
+
+const { registerUploadRoutes } = require('./uploadRoutes');
+const { registerAdminRoutes } = require('./adminRoutes');
 
 const app = express();
-app.use(cors());
-app.use(express.json());
 
-// ==== CONFIG ====
+/* ──────────────────────────────────────────────
+ *  ADMIN CREDENTIALS (FROM .ENV ONLY)
+ * ────────────────────────────────────────────── */
 
-// hardcoded admin login (MVP)
-// in production: use env vars / proper auth
-const ADMIN_USER = 'admin';
-const ADMIN_PASS = 'password123';
+const ADMIN_USER =
+  process.env.ADMIN_USER || process.env.ADMIN_USERNAME || '';
+const ADMIN_PASS =
+  process.env.ADMIN_PASS || process.env.ADMIN_PASSWORD || '';
 
-// hardcoded allowed clients (MVP: just one)
-const CLIENTS = {
-  // choose any ID you like (must match client)
-  'client-1': {
-    publicKeyBase64: '6+JBvOzFVqrmEWKPoMfwcTNPG9Xg4VRLbV2qiQT5gys='
-  }
-};
-
-// convert base64 public keys to Uint8Array
-for (const id in CLIENTS) {
-  CLIENTS[id].publicKey = util.decodeBase64(CLIENTS[id].publicKeyBase64);
+if (!ADMIN_USER || !ADMIN_PASS) {
+  console.warn(
+    'WARNING: ADMIN_USER / ADMIN_PASS (or ADMIN_USERNAME / ADMIN_PASSWORD) not set in .env – admin login will fail.'
+  );
 }
 
-// storage for uploaded photos
-const uploadDir = path.join(__dirname, 'uploads');
-if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
+/* ──────────────────────────────────────────────
+ *  BASIC MIDDLEWARE
+ * ────────────────────────────────────────────── */
 
-const storage = multer.diskStorage({
-  destination: (_, file, cb) => cb(null, uploadDir),
-  filename: (_, file, cb) => {
-    const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
-    cb(null, unique + path.extname(file.originalname));
+app.use(cors());
+app.use(express.json({ limit: '20mb' }));
+app.use(
+  express.urlencoded({
+    extended: true,
+    limit: '20mb',
+  })
+);
+
+app.use(
+  session({
+    secret: process.env.SESSION_SECRET || 'dev-secret',
+    resave: false,
+    saveUninitialized: false,
+  })
+);
+
+/* ──────────────────────────────────────────────
+ *  AUTH HELPERS
+ * ────────────────────────────────────────────── */
+
+function requireAdmin(req, res, next) {
+  if (req.session && req.session.isAdmin) return next();
+  return res.redirect('/login');
+}
+
+/* ──────────────────────────────────────────────
+ *  LOGIN / LOGOUT / ROOT
+ * ────────────────────────────────────────────── */
+
+function renderLoginPage(errorMessage = '') {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Admin Login</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: radial-gradient(circle at top, #111827, #020617);
+      color: #e5e7eb;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+    }
+    .card {
+      background: #020617;
+      padding: 24px;
+      border-radius: 12px;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+      width: 320px;
+      border: 1px solid #1f2937;
+    }
+    h1 { margin: 0 0 16px 0; font-size: 20px; }
+    label { display: block; margin-top: 12px; font-size: 14px; }
+    input {
+      width: 100%;
+      padding: 8px 10px;
+      border-radius: 6px;
+      border: 1px solid #374151;
+      background: #030712;
+      color: #e5e7eb;
+      margin-top: 4px;
+    }
+    button {
+      margin-top: 16px;
+      width: 100%;
+      padding: 10px;
+      border-radius: 999px;
+      border: none;
+      background: #2563eb;
+      color: white;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #1d4ed8;
+    }
+    .error {
+      margin-top: 12px;
+      color: #f97373;
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+  <form class="card" method="POST" action="/login">
+    <h1>Admin Login</h1>
+    <label>
+      Username
+      <input name="username" autocomplete="username" autofocus />
+    </label>
+    <label>
+      Password
+      <input type="password" name="password" autocomplete="current-password" />
+    </label>
+    <button type="submit">Log in</button>
+    ${
+      errorMessage
+        ? `<div class="error">${errorMessage}</div>`
+        : ''
+    }
+  </form>
+</body>
+</html>`;
+}
+
+app.get('/login', (req, res) => {
+  res.send(renderLoginPage());
+});
+
+app.post('/login', (req, res) => {
+  const { username, password } = req.body || {};
+
+  const ok = username === ADMIN_USER && password === ADMIN_PASS;
+
+  if (ok) {
+    req.session.isAdmin = true;
+    return res.redirect('/dashboard');
   }
+
+  return res.send(renderLoginPage('Invalid username or password'));
 });
-const upload = multer({ storage });
 
-// ==== API: upload photo ====
+app.post('/logout', (req, res) => {
+  req.session.destroy(() => {
+    res.redirect('/login');
+  });
+});
 
-app.post('/upload', upload.single('photo'), (req, res) => {
-  try {
-    const { clientId, timestamp, signatureBase64 } = req.body;
-
-    if (!req.file) {
-      return res.status(400).json({ error: 'No file uploaded' });
-    }
-    if (!clientId || !timestamp || !signatureBase64) {
-      return res.status(400).json({ error: 'Missing auth fields' });
-    }
-
-    const client = CLIENTS[clientId];
-    if (!client) {
-      fs.unlinkSync(req.file.path);
-      return res.status(401).json({ error: 'Unknown client' });
-    }
-
-    // The client signs this exact message:
-    const message = `${timestamp}:${req.file.originalname}`;
-    const messageBytes = util.decodeUTF8(message);
-    const signatureBytes = util.decodeBase64(signatureBase64);
-
-    const ok = nacl.sign.detached.verify(
-      messageBytes,
-      signatureBytes,
-      client.publicKey
-    );
-
-    if (!ok) {
-      fs.unlinkSync(req.file.path);
-      return res.status(401).json({ error: 'Invalid signature' });
-    }
-
-    console.log('Saved file:', req.file.filename);
-
-    return res.json({
-      status: 'ok',
-      filename: req.file.filename
-    });
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ error: 'Server error' });
+app.get('/', (req, res) => {
+  if (req.session && req.session.isAdmin) {
+    return res.redirect('/dashboard');
   }
+  return res.redirect('/login');
 });
 
-// ==== Static files for viewing ====
-app.use('/uploads', express.static(uploadDir));
+/* ──────────────────────────────────────────────
+ *  SHARED STATE (PORT / SERVER HANDLE)
+ * ────────────────────────────────────────────── */
 
-// ==== SUPER SIMPLE ADMIN LOGIN (MVP) ====
+const state = {
+  currentPort: parseInt(process.env.PORT, 10) || 4000,
+  server: null,
+};
 
-app.get('/admin', (req, res) => {
-  const { user, pass } = req.query;
+/* ──────────────────────────────────────────────
+ *  REGISTER ROUTE MODULES
+ * ────────────────────────────────────────────── */
 
-  if (user !== ADMIN_USER || pass !== ADMIN_PASS) {
-    return res.send(`
-      <html>
-        <body>
-          <h1>Admin Login</h1>
-          <form method="GET" action="/admin">
-            <label>Username: <input name="user" /></label><br/>
-            <label>Password: <input type="password" name="pass" /></label><br/>
-            <button type="submit">Login</button>
-          </form>
-        </body>
-      </html>
-    `);
-  }
+registerUploadRoutes(app);                     // /upload, chunk endpoints
+registerAdminRoutes(app, { requireAdmin, state }); // dashboard, folders, /uploads, port change
 
-  // list files in uploads
-  const files = fs.readdirSync(uploadDir);
+/* ──────────────────────────────────────────────
+ *  START SERVER
+ * ────────────────────────────────────────────── */
 
-  const listHtml = files
-    .map(
-      f => `
-        <div style="margin-bottom:20px;">
-          <p>${f}</p>
-          <img src="/uploads/${f}" style="max-width:300px; max-height:300px;" />
-        </div>
-      `
-    )
-    .join('\n');
-
-  res.send(`
-    <html>
-      <body>
-        <h1>Uploaded Photos</h1>
-        ${listHtml || '<p>No files yet.</p>'}
-      </body>
-    </html>
-  `);
+state.server = app.listen(state.currentPort, () => {
+  console.log('Server listening on port', state.currentPort);
 });
 
-const PORT = process.env.PORT || 4000;
-app.listen(PORT, () => {
-  console.log('Server listening on port', PORT);
-});
-
+module.exports = app;

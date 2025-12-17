@@ -205,26 +205,31 @@ async function startServer() {
     // Admin routes (/admin/*, requires admin login)
     registerAdminRoutes(app, { requireAdmin, state });
     
-    /* ──────────────────────────────────────────────
-     *  START SERVER
-     * ────────────────────────────────────────────── */
-    
-    state.server = app.listen(state.currentPort, () => {
-      console.log(`
+/* ──────────────────────────────────────────────
+ *  START SERVER
+ * ────────────────────────────────────────────── */
+
+const envPort = Number.parseInt(process.env.PORT || '', 10);
+const envHost = (process.env.HOST || '').trim();
+
+const PORT = Number.isFinite(envPort) ? envPort : (state.currentPort || 4000);
+const HOST = envHost || '127.0.0.1';
+
+state.currentPort = PORT;
+
+state.server = app.listen(PORT, HOST, () => {
+  console.log(`
 ╔═══════════════════════════════════════════════╗
 ║           SERVER STARTED                      ║
 ╠═══════════════════════════════════════════════╣
-║  Port: ${state.currentPort}                            ║
-║  User Login: http://localhost:${state.currentPort}         ║
-║  Admin Login: http://localhost:${state.currentPort}/admin  ║
+║  Host: ${HOST}
+║  Port: ${PORT}
+║  User Login:  http://${HOST}:${PORT}
+║  Admin Login: http://${HOST}:${PORT}/admin
 ╚═══════════════════════════════════════════════╝
-      `);
-    });
-  } catch (err) {
-    console.error('Failed to start server:', err);
-    process.exit(1);
-  }
-}
+  `);
+});
+
 
 startServer();
 

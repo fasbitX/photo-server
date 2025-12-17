@@ -8,6 +8,10 @@ const {
   createPasswordResetToken,
   resetPassword
 } = require('./db-users');
+const {
+  sendVerificationEmail,
+  sendPasswordResetEmail
+} = require('./email-utils');
 
 function registerAuthRoutes(app) {
   
@@ -106,11 +110,16 @@ function registerAuthRoutes(app) {
         phone, email, password
       });
       
-      // In production, send verification email here
-      // For now, show verification link
-      const verifyUrl = `${req.protocol}://${req.get('host')}/verify-email?token=${result.verificationToken}`;
-      
-      res.send(renderVerificationPending(email, verifyUrl));
+      // Send verification email
+      try {
+        await sendVerificationEmail(email, result.verificationToken, req);
+        res.send(renderVerificationPending(email, null)); // null means don't show test link
+      } catch (emailError) {
+        console.error('Failed to send verification email:', emailError);
+        // Still show success but with test link since email failed
+        const verifyUrl = `${req.protocol}://${req.get('host')}/verify-email?token=${result.verificationToken}`;
+        res.send(renderVerificationPending(email, verifyUrl, 'Email sending failed. Use the link below to verify.'));
+      }
       
     } catch (err) {
       console.error('Signup error:', err);
@@ -166,10 +175,16 @@ function registerAuthRoutes(app) {
       
       const token = await createPasswordResetToken(email);
       
-      // In production, send email here
-      const resetUrl = `${req.protocol}://${req.get('host')}/reset-password?token=${token}`;
-      
-      res.send(renderMessage('Reset Link Sent', `Password reset link: <a href="${resetUrl}">${resetUrl}</a><br><br>In production, this would be emailed to you.`));
+      // Send password reset email
+      try {
+        await sendPasswordResetEmail(email, token, req);
+        res.send(renderMessage('Reset Link Sent', 'A password reset link has been sent to your email address. Please check your inbox.'));
+      } catch (emailError) {
+        console.error('Failed to send reset email:', emailError);
+        // Still show test link since email failed
+        const resetUrl = `${req.protocol}://${req.get('host')}/reset-password?token=${token}`;
+        res.send(renderMessage('Email Error', `Failed to send email. Use this link to reset: <a href="${resetUrl}">${resetUrl}</a>`));
+      }
       
     } catch (err) {
       console.error('Forgot password error:', err);
@@ -259,8 +274,8 @@ function getBaseStyles() {
         padding: 12px;
         border: 2px solid #e0e0e0;
         border-radius: 6px;
-        font-size: 15px;
-        transition: border-color 0.3s;
+        font-size: 14px;
+        transition: border 0.3s;
       }
       input:focus, select:focus {
         outline: none;
@@ -269,16 +284,35 @@ function getBaseStyles() {
       button {
         width: 100%;
         padding: 14px;
-        background: #667eea;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         color: white;
         border: none;
         border-radius: 6px;
         font-size: 16px;
         font-weight: 600;
         cursor: pointer;
-        transition: background 0.3s;
+        transition: transform 0.2s, box-shadow 0.2s;
       }
-      button:hover { background: #5568d3; }
+      button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+      }
+      button:active {
+        transform: translateY(0);
+      }
+      .link {
+        text-align: center;
+        margin-top: 20px;
+        color: #666;
+      }
+      .link a {
+        color: #667eea;
+        text-decoration: none;
+        font-weight: 500;
+      }
+      .link a:hover {
+        text-decoration: underline;
+      }
       .error {
         background: #fee;
         color: #c33;
@@ -289,22 +323,19 @@ function getBaseStyles() {
       }
       .success {
         background: #efe;
-        color: #3c3;
+        color: #3a3;
         padding: 12px;
         border-radius: 6px;
         margin-bottom: 20px;
-        border-left: 4px solid #3c3;
+        border-left: 4px solid #3a3;
       }
-      .link {
-        text-align: center;
-        margin-top: 20px;
-        color: #667eea;
+      .row {
+        display: flex;
+        gap: 15px;
       }
-      .link a { color: #667eea; text-decoration: none; font-weight: 500; }
-      .link a:hover { text-decoration: underline; }
-      .row { display: flex; gap: 15px; }
-      .row .form-group { flex: 1; }
-      a { color: #667eea; }
+      .row .form-group {
+        flex: 1;
+      }
     </style>
   `;
 }
@@ -459,7 +490,7 @@ function renderSignupPage(error = '', formData = {}) {
 </html>`;
 }
 
-function renderVerificationPending(email, verifyUrl) {
+function renderVerificationPending(email, verifyUrl = null, errorMsg = null) {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -474,11 +505,14 @@ function renderVerificationPending(email, verifyUrl) {
     <div class="success">
       Account created successfully!
     </div>
+    ${errorMsg ? `<div class="error">${errorMsg}</div>` : ''}
     <p>We've sent a verification link to <strong>${email}</strong></p>
-    <p>Please click the link in the email to verify your account.</p>
+    <p>Please check your inbox and click the link to verify your account.</p>
+    ${verifyUrl ? `
     <p style="margin-top: 20px; font-size: 14px; color: #999;">
       For testing: <a href="${verifyUrl}">Click here to verify</a>
     </p>
+    ` : ''}
     <div class="link">
       <a href="/login">Back to Login</a>
     </div>

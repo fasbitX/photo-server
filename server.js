@@ -223,15 +223,16 @@ async function startServer() {
 
     state.server = app.listen(PORT, HOST, () => {
       console.log(`
-╔═══════════════════════════════════════════════╗
-║           SERVER STARTED                      ║
-╠═══════════════════════════════════════════════╣
-║  Host: ${HOST}
-║  Port: ${PORT}
-║  User Login:  http://${HOST}:${PORT}/login
-║  Admin Login: http://${HOST}:${PORT}/admin/login
-║  Admin Panel: http://${HOST}:${PORT}/admin/dashboard
-╚═══════════════════════════════════════════════╝
+╔════════════════════════════════════════════════════════╗
+║           SERVER STARTED                               ║
+╠════════════════════════════════════════════════════════╣
+║  Host: ${HOST}                                         ║    
+║  Port: ${PORT}                                         ║         
+║  User Login:  http://${HOST}:${PORT}/login             ║  
+║  Admin Login: http://${HOST}:${PORT}/admin/login       ║
+║  Admin Panel: http://${HOST}:${PORT}/admin/dashboard   ║    
+║                                                        ║
+╚════════════════════════════════════════════════════════╝
       `);
     });
   } catch (err) {

@@ -785,6 +785,11 @@ function registerAdminRoutes(app, { requireAdmin, state }) {
   // protect /uploads
   app.use('/uploads', requireAdmin, express.static(uploadDir));
 
+   // Redirect /admin to /dashboard
+  app.get('/admin', requireAdmin, (req, res) => {
+    res.redirect('/dashboard');
+  });
+
   // dashboard
   app.get('/dashboard', requireAdmin, (req, res) => {
     const rawFolder = req.query.folder || '';

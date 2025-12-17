@@ -786,12 +786,12 @@ function registerAdminRoutes(app, { requireAdmin, state }) {
   app.use('/uploads', requireAdmin, express.static(uploadDir));
 
    // Redirect /admin to /dashboard
-  app.get('/admin', requireAdmin, (req, res) => {
+  app.get('/admin/dashboard', requireAdmin, (req, res) => {
     res.redirect('/dashboard');
   });
 
   // dashboard
-  app.get('/dashboard', requireAdmin, (req, res) => {
+  app.get('/admin/dashboard', requireAdmin, (req, res) => {
     const rawFolder = req.query.folder || '';
     const currentFolder = sanitizeFolderName(rawFolder);
 
@@ -822,7 +822,7 @@ function registerAdminRoutes(app, { requireAdmin, state }) {
   app.post('/admin/add-folder', requireAdmin, (req, res) => {
     const folderName = sanitizeFolderName(req.body.folderName || '');
     if (!folderName) {
-      return res.redirect('/dashboard');
+      return res.redirect('/admin/dashboard');
     }
     try {
       const dir = safeJoinUploadDir(folderName);

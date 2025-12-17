@@ -180,45 +180,48 @@ const state = {
 };
 
 /* ──────────────────────────────────────────────
- *  INITIALIZE DATABASE
+ *  INITIALIZE DATABASE + START SERVER
  * ────────────────────────────────────────────── */
+
+// IMPORTANT when behind Apache/Cloudflare (reverse proxy) so secure cookies work
+app.set('trust proxy', 1);
 
 async function startServer() {
   try {
     // Initialize user database
     await initDatabase();
     console.log('User database initialized');
-    
+
     /* ──────────────────────────────────────────────
      *  REGISTER ROUTE MODULES
      * ────────────────────────────────────────────── */
-    
+
     // User authentication routes (/, /login, /signup, etc.)
     registerAuthRoutes(app);
-    
+
     // User dashboard routes (/dashboard, /my-photos, /transactions, /account)
     registerUserDashboardRoutes(app);
-    
+
     // Upload routes for mobile app
     registerUploadRoutes(app);
-    
+
     // Admin routes (/admin/*, requires admin login)
     registerAdminRoutes(app, { requireAdmin, state });
-    
-/* ──────────────────────────────────────────────
- *  START SERVER
- * ────────────────────────────────────────────── */
 
-const envPort = Number.parseInt(process.env.PORT || '', 10);
-const envHost = (process.env.HOST || '').trim();
+    /* ──────────────────────────────────────────────
+     *  START SERVER
+     * ────────────────────────────────────────────── */
 
-const PORT = Number.isFinite(envPort) ? envPort : (state.currentPort || 4000);
-const HOST = envHost || '127.0.0.1';
+    const envPort = Number.parseInt(process.env.PORT || '', 10);
+    const envHost = (process.env.HOST || '').trim();
 
-state.currentPort = PORT;
+    const PORT = Number.isFinite(envPort) ? envPort : (state.currentPort || 4000);
+    const HOST = envHost || '127.0.0.1';
 
-state.server = app.listen(PORT, HOST, () => {
-  console.log(`
+    state.currentPort = PORT;
+
+    state.server = app.listen(PORT, HOST, () => {
+      console.log(`
 ╔═══════════════════════════════════════════════╗
 ║           SERVER STARTED                      ║
 ╠═══════════════════════════════════════════════╣
@@ -227,8 +230,13 @@ state.server = app.listen(PORT, HOST, () => {
 ║  User Login:  http://${HOST}:${PORT}
 ║  Admin Login: http://${HOST}:${PORT}/admin
 ╚═══════════════════════════════════════════════╝
-  `);
-});
+      `);
+    });
+  } catch (err) {
+    console.error('Failed to start server:', err);
+    process.exit(1);
+  }
+}
 
 startServer();
 

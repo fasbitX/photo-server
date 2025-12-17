@@ -315,12 +315,12 @@ function renderHomePage() {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Welcome - FasBit</title>
+  <title>Welcome - Fasbit</title>
   ${getBaseStyles()}
 </head>
 <body>
   <div class="container">
-    <h1>Welcome to FasBit</h1>
+    <h1>Welcome to Fasbit</h1>
     <p>Secure photo sharing and account management</p>
     <div style="margin-top: 30px;">
       <a href="/login"><button>Log In</button></a>
@@ -339,7 +339,7 @@ function renderLoginPage(error = '') {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Login - FasBit</title>
+  <title>Login - Fasbit</title>
   ${getBaseStyles()}
 </head>
 <body>
@@ -375,13 +375,13 @@ function renderSignupPage(error = '', formData = {}) {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Sign Up - FasBit</title>
+  <title>Sign Up - Fasbit</title>
   ${getBaseStyles()}
 </head>
 <body>
   <div class="container">
     <h1>Create Account</h1>
-    <h2>Join FasBit today</h2>
+    <h2>Join Fasbit today</h2>
     ${error ? `<div class="error">${error}</div>` : ''}
     <form method="POST" action="/signup">
       <div class="row">
@@ -465,7 +465,7 @@ function renderVerificationPending(email, verifyUrl) {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Verify Email - FasBit</title>
+  <title>Verify Email - Fasbit</title>
   ${getBaseStyles()}
 </head>
 <body>
@@ -493,7 +493,7 @@ function renderForgotPasswordPage(error = '') {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Forgot Password - FasBit</title>
+  <title>Forgot Password - Fasbit</title>
   ${getBaseStyles()}
 </head>
 <body>
@@ -522,7 +522,7 @@ function renderResetPasswordPage(token, error = '') {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Reset Password - FasBit</title>
+  <title>Reset Password - Fasbit</title>
   ${getBaseStyles()}
 </head>
 <body>
@@ -553,7 +553,7 @@ function renderMessage(title, message) {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${title} - FasBit</title>
+  <title>${title} - Fasbit</title>
   ${getBaseStyles()}
 </head>
 <body>

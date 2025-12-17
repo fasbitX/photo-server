@@ -230,7 +230,6 @@ state.server = app.listen(PORT, HOST, () => {
   `);
 });
 
-
 startServer();
 
 module.exports = app;

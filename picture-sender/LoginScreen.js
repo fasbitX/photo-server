@@ -11,22 +11,22 @@ import {
   Alert,
 } from 'react-native';
 import { useAuth } from './auth';
+import { SERVER_HOST, SERVER_PORT, USE_HTTPS } from './config';
 
 export default function LoginScreen({ navigation }) {
   const { login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [serverUrl, setServerUrl] = useState('https://text.fasbit.com');
   const [loading, setLoading] = useState(false);
+
+  // Build server URL from config
+  const serverUrl = USE_HTTPS
+    ? `https://${SERVER_HOST}${SERVER_PORT === '443' ? '' : `:${SERVER_PORT}`}`
+    : `http://${SERVER_HOST}${SERVER_PORT === '80' ? '' : `:${SERVER_PORT}`}`;
 
   const handleLogin = async () => {
     if (!email || !password) {
       Alert.alert('Error', 'Please enter email and password');
-      return;
-    }
-
-    if (!serverUrl) {
-      Alert.alert('Error', 'Please enter server URL');
       return;
     }
 
@@ -46,20 +46,7 @@ export default function LoginScreen({ navigation }) {
         <Text style={styles.subtitle}>Sign in to continue</Text>
 
         <View style={styles.inputGroup}>
-          <Text style={styles.label}>Server URL</Text>
-          <TextInput
-            style={styles.input}
-            value={serverUrl}
-            onChangeText={setServerUrl}
-            placeholder="https://text.fasbit.com"
-            placeholderTextColor="#6B7280"
-            autoCapitalize="none"
-            keyboardType="url"
-          />
-        </View>
-
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Email</Text>
+          <Text style={styles.label}>Email<Text style={styles.required}>*</Text></Text>
           <TextInput
             style={styles.input}
             value={email}
@@ -69,11 +56,12 @@ export default function LoginScreen({ navigation }) {
             autoCapitalize="none"
             keyboardType="email-address"
             autoComplete="email"
+            textContentType="emailAddress"
           />
         </View>
 
         <View style={styles.inputGroup}>
-          <Text style={styles.label}>Password</Text>
+          <Text style={styles.label}>Password<Text style={styles.required}>*</Text></Text>
           <TextInput
             style={styles.input}
             value={password}
@@ -82,6 +70,7 @@ export default function LoginScreen({ navigation }) {
             placeholderTextColor="#6B7280"
             secureTextEntry
             autoComplete="password"
+            textContentType="password"
           />
         </View>
 
@@ -143,6 +132,10 @@ const styles = StyleSheet.create({
     color: '#D1D5DB',
     marginBottom: 6,
     fontWeight: '500',
+  },
+  required: {
+    color: '#DC2626',
+    fontSize: 14,
   },
   input: {
     backgroundColor: '#030712',

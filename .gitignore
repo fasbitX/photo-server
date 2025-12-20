@@ -25,3 +25,12 @@ Thumbs.db
 
 #tools
 deploy-server.sh
+
+# logs
+logs/*.log
+*.log
+
+# runtime / app data
+uploads/
+users.db
+picture-sender/SignupScreen.js

@@ -9,9 +9,11 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
+  Platform,
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import { useAuth } from './auth';
+import { SERVER_HOST, SERVER_PORT, USE_HTTPS } from './config';
 
 export default function SignupScreen({ navigation }) {
   const { signup } = useAuth();
@@ -24,11 +26,17 @@ export default function SignupScreen({ navigation }) {
     zip: '',
     phone: '',
     email: '',
+    gender: '',
+    dateOfBirth: '',
     password: '',
     confirmPassword: '',
   });
-  const [serverUrl, setServerUrl] = useState('https://text.fasbit.com');
   const [loading, setLoading] = useState(false);
+
+  // Build server URL from config
+  const serverUrl = USE_HTTPS
+    ? `https://${SERVER_HOST}${SERVER_PORT === '443' ? '' : `:${SERVER_PORT}`}`
+    : `http://${SERVER_HOST}${SERVER_PORT === '80' ? '' : `:${SERVER_PORT}`}`;
 
   const updateField = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -36,8 +44,24 @@ export default function SignupScreen({ navigation }) {
 
   const handleSignup = async () => {
     // Validation
-    if (Object.values(formData).some(val => !val)) {
-      Alert.alert('Error', 'Please fill in all fields');
+    const requiredFields = [
+      'firstName',
+      'lastName',
+      'streetAddress',
+      'city',
+      'state',
+      'zip',
+      'phone',
+      'email',
+      'gender',
+      'dateOfBirth',
+      'password',
+      'confirmPassword',
+    ];
+
+    const missingFields = requiredFields.filter(field => !formData[field]);
+    if (missingFields.length > 0) {
+      Alert.alert('Error', 'Please fill in all required fields');
       return;
     }
 
@@ -48,6 +72,13 @@ export default function SignupScreen({ navigation }) {
 
     if (formData.password.length < 8) {
       Alert.alert('Error', 'Password must be at least 8 characters');
+      return;
+    }
+
+    // Validate date of birth format (MM/DD/YYYY)
+    const dobRegex = /^(0[1-9]|1[0-2])\/(0[1-9]|[12]\d|3[01])\/\d{4}$/;
+    if (!dobRegex.test(formData.dateOfBirth)) {
+      Alert.alert('Error', 'Date of Birth must be in MM/DD/YYYY format');
       return;
     }
 
@@ -72,68 +103,73 @@ export default function SignupScreen({ navigation }) {
         <Text style={styles.title}>Create Account</Text>
         <Text style={styles.subtitle}>Join Fasbit today</Text>
 
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Server URL</Text>
-          <TextInput
-            style={styles.input}
-            value={serverUrl}
-            onChangeText={setServerUrl}
-            placeholder="https://text.fasbit.com"
-            placeholderTextColor="#6B7280"
-            autoCapitalize="none"
-            keyboardType="url"
-          />
-        </View>
-
         <View style={styles.row}>
           <View style={[styles.inputGroup, styles.half]}>
-            <Text style={styles.label}>First Name</Text>
+            <Text style={styles.label}>
+              First Name<Text style={styles.required}>*</Text>
+            </Text>
             <TextInput
               style={styles.input}
               value={formData.firstName}
               onChangeText={val => updateField('firstName', val)}
               placeholder="John"
               placeholderTextColor="#6B7280"
+              textContentType="givenName"
+              autoComplete="name-given"
             />
           </View>
 
           <View style={[styles.inputGroup, styles.half]}>
-            <Text style={styles.label}>Last Name</Text>
+            <Text style={styles.label}>
+              Last Name<Text style={styles.required}>*</Text>
+            </Text>
             <TextInput
               style={styles.input}
               value={formData.lastName}
               onChangeText={val => updateField('lastName', val)}
               placeholder="Doe"
               placeholderTextColor="#6B7280"
+              textContentType="familyName"
+              autoComplete="name-family"
             />
           </View>
         </View>
 
         <View style={styles.inputGroup}>
-          <Text style={styles.label}>Street Address</Text>
+          <Text style={styles.label}>
+            Street Address<Text style={styles.required}>*</Text>
+          </Text>
           <TextInput
             style={styles.input}
             value={formData.streetAddress}
             onChangeText={val => updateField('streetAddress', val)}
             placeholder="123 Main St"
             placeholderTextColor="#6B7280"
+            textContentType="streetAddressLine1"
+            autoComplete="street-address"
           />
         </View>
 
         <View style={styles.row}>
           <View style={[styles.inputGroup, styles.third]}>
-            <Text style={styles.label}>City</Text>
+            <Text style={styles.label}>
+              City<Text style={styles.required}>*</Text>
+            </Text>
             <TextInput
               style={styles.input}
               value={formData.city}
               onChangeText={val => updateField('city', val)}
               placeholder="Burlington"
               placeholderTextColor="#6B7280"
+              textContentType="addressCity"
+              autoComplete="postal-address-locality"
             />
           </View>
 
           <View style={[styles.inputGroup, styles.third]}>
-            <Text style={styles.label}>State</Text>
+            <Text style={styles.label}>
+              State<Text style={styles.required}>*</Text>
+            </Text>
             <View style={styles.pickerContainer}>
               <Picker
                 selectedValue={formData.state}
@@ -151,7 +187,9 @@ export default function SignupScreen({ navigation }) {
           </View>
 
           <View style={[styles.inputGroup, styles.third]}>
-            <Text style={styles.label}>ZIP</Text>
+            <Text style={styles.label}>
+              ZIP<Text style={styles.required}>*</Text>
+            </Text>
             <TextInput
               style={styles.input}
               value={formData.zip}
@@ -160,12 +198,16 @@ export default function SignupScreen({ navigation }) {
               placeholderTextColor="#6B7280"
               keyboardType="numeric"
               maxLength={5}
+              textContentType="postalCode"
+              autoComplete="postal-code"
             />
           </View>
         </View>
 
         <View style={styles.inputGroup}>
-          <Text style={styles.label}>Phone</Text>
+          <Text style={styles.label}>
+            Phone<Text style={styles.required}>*</Text>
+          </Text>
           <TextInput
             style={styles.input}
             value={formData.phone}
@@ -173,11 +215,15 @@ export default function SignupScreen({ navigation }) {
             placeholder="(802) 555-1234"
             placeholderTextColor="#6B7280"
             keyboardType="phone-pad"
+            textContentType="telephoneNumber"
+            autoComplete="tel"
           />
         </View>
 
         <View style={styles.inputGroup}>
-          <Text style={styles.label}>Email</Text>
+          <Text style={styles.label}>
+            Email<Text style={styles.required}>*</Text>
+          </Text>
           <TextInput
             style={styles.input}
             value={formData.email}
@@ -186,11 +232,52 @@ export default function SignupScreen({ navigation }) {
             placeholderTextColor="#6B7280"
             autoCapitalize="none"
             keyboardType="email-address"
+            textContentType="emailAddress"
+            autoComplete="email"
           />
         </View>
 
+        <View style={styles.row}>
+          <View style={[styles.inputGroup, styles.half]}>
+            <Text style={styles.label}>
+              Gender<Text style={styles.required}>*</Text>
+            </Text>
+            <View style={styles.pickerContainer}>
+              <Picker
+                selectedValue={formData.gender}
+                onValueChange={val => updateField('gender', val)}
+                style={styles.picker}
+                dropdownIconColor="#9CA3AF"
+              >
+                <Picker.Item label="Select..." value="" />
+                <Picker.Item label="Male" value="male" />
+                <Picker.Item label="Female" value="female" />
+                <Picker.Item label="Other" value="other" />
+                <Picker.Item label="Prefer not to say" value="prefer_not_to_say" />
+              </Picker>
+            </View>
+          </View>
+
+          <View style={[styles.inputGroup, styles.half]}>
+            <Text style={styles.label}>
+              Date of Birth<Text style={styles.required}>*</Text>
+            </Text>
+            <TextInput
+              style={styles.input}
+              value={formData.dateOfBirth}
+              onChangeText={val => updateField('dateOfBirth', val)}
+              placeholder="MM/DD/YYYY"
+              placeholderTextColor="#6B7280"
+              keyboardType="numeric"
+              maxLength={10}
+            />
+          </View>
+        </View>
+
         <View style={styles.inputGroup}>
-          <Text style={styles.label}>Password (min 8 characters)</Text>
+          <Text style={styles.label}>
+            Password (min 8 characters)<Text style={styles.required}>*</Text>
+          </Text>
           <TextInput
             style={styles.input}
             value={formData.password}
@@ -198,11 +285,16 @@ export default function SignupScreen({ navigation }) {
             placeholder="Enter password"
             placeholderTextColor="#6B7280"
             secureTextEntry
+            textContentType="newPassword"
+            autoComplete="password-new"
+            passwordRules="minlength: 8;"
           />
         </View>
 
         <View style={styles.inputGroup}>
-          <Text style={styles.label}>Confirm Password</Text>
+          <Text style={styles.label}>
+            Confirm Password<Text style={styles.required}>*</Text>
+          </Text>
           <TextInput
             style={styles.input}
             value={formData.confirmPassword}
@@ -210,6 +302,8 @@ export default function SignupScreen({ navigation }) {
             placeholder="Re-enter password"
             placeholderTextColor="#6B7280"
             secureTextEntry
+            textContentType="newPassword"
+            autoComplete="password-new"
           />
         </View>
 
@@ -271,6 +365,10 @@ const styles = StyleSheet.create({
     color: '#D1D5DB',
     marginBottom: 6,
     fontWeight: '500',
+  },
+  required: {
+    color: '#DC2626',
+    fontSize: 14,
   },
   input: {
     backgroundColor: '#030712',

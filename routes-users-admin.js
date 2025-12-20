@@ -1,9 +1,7 @@
 // routes-users-admin.js
 const { Pool } = require('pg');
 
-// We'll reuse the existing pool from database.js
 let pool;
-
 function getPool() {
   if (!pool) {
     pool = new Pool({
@@ -18,327 +16,130 @@ function getPool() {
 }
 
 /* ────────────────────────────────────────────────
- *  HTML RENDERER FOR USERS PAGE
+ *  HELPERS
  * ──────────────────────────────────────────────── */
 
-function renderUsersPage(users = [], searchQuery = '') {
-  const userRowsHtml = users.length === 0
-    ? '<tr><td colspan="7" style="text-align: center; padding: 40px; color: #6B7280;">No users found</td></tr>'
-    : users.map(user => {
-        const status = user.status || 'active';
-        const statusClass = status === 'active' ? 'status-active' : 'status-suspended';
-        const createdDate = new Date(parseInt(user.created_date)).toLocaleDateString();
-        
-        return `
-          <tr class="user-row" onclick="viewUser(${user.id})">
-            <td>${escapeHtml(user.account_number)}</td>
-            <td>${escapeHtml(user.first_name)} ${escapeHtml(user.last_name)}</td>
-            <td>${escapeHtml(user.email)}</td>
-            <td>${escapeHtml(user.phone)}</td>
-            <td><span class="status-badge ${statusClass}">${status}</span></td>
-            <td>$${parseFloat(user.account_balance).toFixed(2)}</td>
-            <td>${createdDate}</td>
-          </tr>
-        `;
-      }).join('');
+function escapeHtml(str = '') {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function formatDateSafe(v) {
+  try {
+    if (v === null || v === undefined || v === '') return '';
+    // If it's a bigint millis string or number
+    if (typeof v === 'string' && /^\d+$/.test(v)) return new Date(Number(v)).toLocaleString();
+    if (typeof v === 'number') return new Date(v).toLocaleString();
+    // If it's a Postgres timestamp/date
+    const d = new Date(v);
+    if (Number.isNaN(d.getTime())) return String(v);
+    return d.toLocaleString();
+  } catch {
+    return String(v || '');
+  }
+}
+
+function toMoneySafe(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return '0.00';
+  return n.toFixed(2);
+}
+
+/* ────────────────────────────────────────────────
+ *  HTML: USERS LIST PAGE
+ * ──────────────────────────────────────────────── */
+
+function renderUsersListPage(users = [], searchQuery = '') {
+  const rows =
+    users.length === 0
+      ? `<tr><td colspan="8" style="text-align:center;padding:40px;color:#6B7280;">No users found</td></tr>`
+      : users
+          .map((u) => {
+            const status = u.status || 'active';
+            const statusClass = status === 'active' ? 'status-active' : 'status-suspended';
+            const created = formatDateSafe(u.created_date);
+
+            return `
+              <tr class="user-row" ondblclick="openUser(${u.id})">
+                <td>${escapeHtml(u.account_number)}</td>
+                <td>${escapeHtml(u.first_name)} ${escapeHtml(u.last_name)}</td>
+                <td>${escapeHtml(u.email)}</td>
+                <td>${escapeHtml(u.phone)}</td>
+                <td><span class="status-badge ${statusClass}">${escapeHtml(status)}</span></td>
+                <td>$${toMoneySafe(u.account_balance)}</td>
+                <td>${escapeHtml(created)}</td>
+                <td class="actions">
+                  <button class="icon-btn" title="Open" onclick="event.stopPropagation(); openUser(${u.id})">↗</button>
+                  <button class="icon-btn" title="Edit" onclick="event.stopPropagation(); openUserEdit(${u.id})">✏</button>
+                  <button class="icon-btn danger" title="Delete" onclick="event.stopPropagation(); quickDelete(${u.id})">🗑</button>
+                </td>
+              </tr>
+            `;
+          })
+          .join('');
 
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Users Management - Admin</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Users - Admin</title>
   <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{
+      font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+      background:#020617;color:#e5e7eb;display:flex;height:100vh;
     }
+    .sidebar{width:260px;background:#020617;border-right:1px solid #1f2937;padding:16px;display:flex;flex-direction:column}
+    .sidebar h1{margin:0 0 20px 0;font-size:18px}
+    .nav-section{margin-bottom:20px}
+    .nav-label{font-size:12px;color:#6B7280;text-transform:uppercase;font-weight:600;margin-bottom:8px;display:block}
+    .nav-item{display:block;padding:8px 12px;margin-bottom:4px;border-radius:6px;color:#e5e7eb;text-decoration:none;font-size:14px;transition:background .2s}
+    .nav-item:hover{background:#111827}
+    .nav-item.active{background:#1f2937;font-weight:600}
+    .logout-btn{margin-top:auto;width:100%;padding:8px;border-radius:999px;border:none;background:#2563eb;color:#fff;font-weight:600;cursor:pointer;font-size:13px}
+    .logout-btn:hover{background:#1d4ed8}
 
-    body {
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      background: #020617;
-      color: #e5e7eb;
-      display: flex;
-      height: 100vh;
-    }
+    .main{flex:1;display:flex;flex-direction:column;overflow:hidden}
+    .top-bar{padding:16px 24px;background:#020617;border-bottom:1px solid #1f2937;display:flex;justify-content:space-between;align-items:center;gap:16px}
+    .page-title{font-size:24px;font-weight:600}
+    .search-box{display:flex;gap:8px;align-items:center}
+    .search-input{padding:8px 16px;background:#030712;border:1px solid #374151;border-radius:8px;color:#e5e7eb;width:320px;font-size:14px}
+    .search-btn{padding:8px 16px;border-radius:8px;border:none;background:#2563eb;color:#fff;font-weight:600;cursor:pointer;font-size:14px}
+    .content-area{flex:1;overflow:auto;padding:24px}
 
-    .sidebar {
-      width: 260px;
-      background: #020617;
-      border-right: 1px solid #1f2937;
-      padding: 16px;
-      display: flex;
-      flex-direction: column;
-    }
+    table{width:100%;border-collapse:collapse;background:#020617;border:1px solid #1f2937;border-radius:8px;overflow:hidden}
+    thead{background:#111827}
+    th{padding:12px 16px;text-align:left;font-size:12px;color:#9CA3AF;text-transform:uppercase;font-weight:600}
+    td{padding:12px 16px;border-top:1px solid #1f2937;font-size:14px;vertical-align:middle}
+    .user-row{cursor:pointer;transition:background .2s}
+    .user-row:hover{background:#111827}
 
-    .sidebar h1 {
-      margin: 0 0 20px 0;
-      font-size: 18px;
-    }
+    .status-badge{padding:4px 12px;border-radius:999px;font-size:12px;font-weight:700;display:inline-block}
+    .status-active{background:#10B981;color:#fff}
+    .status-suspended{background:#EF4444;color:#fff}
 
-    .nav-section {
-      margin-bottom: 20px;
+    .actions{white-space:nowrap}
+    .icon-btn{
+      border:1px solid #334155;background:#0b1220;color:#e5e7eb;
+      border-radius:10px;padding:6px 10px;margin-right:8px;cursor:pointer;
+      transition:transform .05s ease, opacity .2s ease, background .2s ease;
+      font-size:14px;
     }
+    .icon-btn:hover{opacity:.95;transform:translateY(-1px);background:#111827}
+    .icon-btn.danger{border-color:#7f1d1d;background:#1a0b0b}
+    .icon-btn.danger:hover{background:#2a0f0f}
 
-    .nav-label {
-      font-size: 12px;
-      color: #6B7280;
-      text-transform: uppercase;
-      font-weight: 600;
-      margin-bottom: 8px;
-      display: block;
-    }
-
-    .nav-item {
-      display: block;
-      padding: 8px 12px;
-      margin-bottom: 4px;
-      border-radius: 6px;
-      color: #e5e7eb;
-      text-decoration: none;
-      font-size: 14px;
-      transition: background 0.2s;
-    }
-
-    .nav-item:hover {
-      background: #111827;
-    }
-
-    .nav-item.active {
-      background: #1f2937;
-      font-weight: 600;
-    }
-
-    .logout-btn {
-      margin-top: auto;
-      width: 100%;
-      padding: 8px;
-      border-radius: 999px;
-      border: none;
-      background: #2563eb;
-      color: white;
-      font-weight: 600;
-      cursor: pointer;
-      font-size: 13px;
-    }
-
-    .logout-btn:hover {
-      background: #1d4ed8;
-    }
-
-    .main {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-    }
-
-    .top-bar {
-      padding: 16px 24px;
-      background: #020617;
-      border-bottom: 1px solid #1f2937;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-
-    .page-title {
-      font-size: 24px;
-      font-weight: 600;
-    }
-
-    .search-box {
-      display: flex;
-      gap: 8px;
-    }
-
-    .search-input {
-      padding: 8px 16px;
-      background: #030712;
-      border: 1px solid #374151;
-      border-radius: 8px;
-      color: #e5e7eb;
-      width: 300px;
-      font-size: 14px;
-    }
-
-    .search-btn {
-      padding: 8px 16px;
-      border-radius: 8px;
-      border: none;
-      background: #2563eb;
-      color: white;
-      font-weight: 600;
-      cursor: pointer;
-      font-size: 14px;
-    }
-
-    .content-area {
-      flex: 1;
-      overflow-y: auto;
-      padding: 24px;
-    }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      background: #020617;
-      border: 1px solid #1f2937;
-      border-radius: 8px;
-      overflow: hidden;
-    }
-
-    thead {
-      background: #111827;
-    }
-
-    th {
-      padding: 12px 16px;
-      text-align: left;
-      font-size: 12px;
-      color: #9CA3AF;
-      text-transform: uppercase;
-      font-weight: 600;
-    }
-
-    td {
-      padding: 12px 16px;
-      border-top: 1px solid #1f2937;
-      font-size: 14px;
-    }
-
-    .user-row {
-      cursor: pointer;
-      transition: background 0.2s;
-    }
-
-    .user-row:hover {
-      background: #111827;
-    }
-
-    .status-badge {
-      padding: 4px 12px;
-      border-radius: 12px;
-      font-size: 12px;
-      font-weight: 600;
-      display: inline-block;
-    }
-
-    .status-active {
-      background: #10B981;
-      color: #fff;
-    }
-
-    .status-suspended {
-      background: #EF4444;
-      color: #fff;
-    }
-
-    /* Modal */
-    .modal-overlay {
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: rgba(0, 0, 0, 0.8);
-      display: none;
-      align-items: center;
-      justify-content: center;
-      z-index: 1000;
-    }
-
-    .modal-overlay.active {
-      display: flex;
-    }
-
-    .modal-content {
-      background: #020617;
-      border: 1px solid #374151;
-      border-radius: 16px;
-      padding: 24px;
-      max-width: 600px;
-      width: 90%;
-      max-height: 80vh;
-      overflow-y: auto;
-    }
-
-    .modal-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 24px;
-    }
-
-    .modal-title {
-      font-size: 20px;
-      font-weight: 600;
-    }
-
-    .close-btn {
-      background: none;
-      border: none;
-      color: #9CA3AF;
-      font-size: 24px;
-      cursor: pointer;
-      padding: 0;
-      width: 32px;
-      height: 32px;
-    }
-
-    .detail-row {
-      margin-bottom: 16px;
-    }
-
-    .detail-label {
-      font-size: 12px;
-      color: #9CA3AF;
-      margin-bottom: 4px;
-    }
-
-    .detail-value {
-      font-size: 16px;
-      color: #fff;
-    }
-
-    .action-buttons {
-      display: flex;
-      gap: 12px;
-      margin-top: 24px;
-    }
-
-    .btn {
-      flex: 1;
-      padding: 12px;
-      border: none;
-      border-radius: 8px;
-      font-size: 14px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: opacity 0.2s;
-    }
-
-    .btn:hover {
-      opacity: 0.9;
-    }
-
-    .btn-suspend {
-      background: #F59E0B;
-      color: #fff;
-    }
-
-    .btn-delete {
-      background: #EF4444;
-      color: #fff;
-    }
+    .hint{color:#94a3b8;font-size:12px;margin-left:10px}
   </style>
 </head>
 <body>
-  <!-- Sidebar -->
   <div class="sidebar">
     <h1>Photo Admin</h1>
-    
     <div class="nav-section">
       <span class="nav-label">Management</span>
       <a href="/admin/users" class="nav-item active">👥 Users</a>
@@ -350,18 +151,20 @@ function renderUsersPage(users = [], searchQuery = '') {
     </form>
   </div>
 
-  <!-- Main Content -->
   <div class="main">
     <div class="top-bar">
-      <h1 class="page-title">Users Management</h1>
+      <div>
+        <h1 class="page-title">Users</h1>
+        <span class="hint">Tip: double-click a user row to open details</span>
+      </div>
       <form class="search-box" method="GET" action="/admin/users">
-        <input 
-          type="text" 
+        <input
+          type="text"
           name="search"
-          class="search-input" 
-          placeholder="Search by name, email, phone..."
+          class="search-input"
+          placeholder="Search by name, email, phone, account #..."
           value="${escapeHtml(searchQuery)}"
-        >
+        />
         <button type="submit" class="search-btn">Search</button>
       </form>
     </div>
@@ -377,226 +180,384 @@ function renderUsersPage(users = [], searchQuery = '') {
             <th>Status</th>
             <th>Balance</th>
             <th>Created</th>
+            <th>Actions</th>
           </tr>
         </thead>
-        <tbody>
-          ${userRowsHtml}
-        </tbody>
+        <tbody>${rows}</tbody>
       </table>
     </div>
   </div>
 
-  <!-- User Detail Modal -->
-  <div class="modal-overlay" id="userModal">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h2 class="modal-title">User Details</h2>
-        <button class="close-btn" onclick="closeModal()">✕</button>
-      </div>
-
-      <div id="userDetails">
-        <!-- Details loaded via JavaScript -->
-      </div>
-
-      <div class="action-buttons">
-        <button class="btn btn-suspend" onclick="toggleSuspend()">Suspend/Activate</button>
-        <button class="btn btn-delete" onclick="deleteUser()">Delete User</button>
-      </div>
-    </div>
-  </div>
-
   <script>
-    let currentUser = null;
-
-    function viewUser(userId) {
-      fetch('/admin/users/api/' + userId)
-        .then(r => r.json())
-        .then(data => {
-          if (data.success) {
-            currentUser = data.user;
-            displayUserDetails(data.user);
-            document.getElementById('userModal').classList.add('active');
-          }
-        })
-        .catch(err => console.error('Error loading user:', err));
+    function openUser(id) {
+      window.location.href = '/admin/users/' + id;
     }
-
-    function displayUserDetails(user) {
-      const created = new Date(parseInt(user.created_date)).toLocaleString();
-      const lastMod = new Date(parseInt(user.last_modified)).toLocaleString();
-      
-      document.getElementById('userDetails').innerHTML = \`
-        <div class="detail-row">
-          <div class="detail-label">Account Number</div>
-          <div class="detail-value">\${escapeHtml(user.account_number)}</div>
-        </div>
-        <div class="detail-row">
-          <div class="detail-label">Name</div>
-          <div class="detail-value">\${escapeHtml(user.first_name)} \${escapeHtml(user.last_name)}</div>
-        </div>
-        <div class="detail-row">
-          <div class="detail-label">Email</div>
-          <div class="detail-value">\${escapeHtml(user.email)}</div>
-        </div>
-        <div class="detail-row">
-          <div class="detail-label">Phone</div>
-          <div class="detail-value">\${escapeHtml(user.phone)}</div>
-        </div>
-        <div class="detail-row">
-          <div class="detail-label">Address</div>
-          <div class="detail-value">\${escapeHtml(user.street_address)}<br>
-          \${escapeHtml(user.city)}, \${escapeHtml(user.state)} \${escapeHtml(user.zip)}</div>
-        </div>
-        <div class="detail-row">
-          <div class="detail-label">Account Balance</div>
-          <div class="detail-value">$\${parseFloat(user.account_balance).toFixed(2)}</div>
-        </div>
-        <div class="detail-row">
-          <div class="detail-label">Status</div>
-          <div class="detail-value">\${escapeHtml(user.status)}</div>
-        </div>
-        <div class="detail-row">
-          <div class="detail-label">Email Verified</div>
-          <div class="detail-value">\${user.email_verified ? 'Yes' : 'No'}</div>
-        </div>
-        <div class="detail-row">
-          <div class="detail-label">Timezone</div>
-          <div class="detail-value">\${escapeHtml(user.timezone)}</div>
-        </div>
-        <div class="detail-row">
-          <div class="detail-label">Created</div>
-          <div class="detail-value">\${created}</div>
-        </div>
-        <div class="detail-row">
-          <div class="detail-label">Last Modified</div>
-          <div class="detail-value">\${lastMod}</div>
-        </div>
-      \`;
+    function openUserEdit(id) {
+      window.location.href = '/admin/users/' + id + '?edit=1';
     }
-
-    function closeModal() {
-      document.getElementById('userModal').classList.remove('active');
-      currentUser = null;
-    }
-
-    function toggleSuspend() {
-      if (!currentUser) return;
-      
-      const newStatus = currentUser.status === 'suspended' ? 'active' : 'suspended';
-      const action = newStatus === 'suspended' ? 'suspend' : 'activate';
-      
-      if (confirm(\`Are you sure you want to \${action} this user?\`)) {
-        fetch('/admin/users/api/' + currentUser.id + '/status', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ status: newStatus })
-        })
-        .then(r => r.json())
-        .then(data => {
-          if (data.success) {
-            alert('User status updated');
-            closeModal();
-            location.reload();
-          } else {
-            alert('Error: ' + (data.error || 'Failed to update status'));
-          }
-        })
-        .catch(err => {
-          console.error('Error:', err);
-          alert('Failed to update user status');
-        });
-      }
-    }
-
-    function deleteUser() {
-      if (!currentUser) return;
-      
-      if (confirm('Are you sure you want to DELETE this user? This action cannot be undone.')) {
-        fetch('/admin/users/api/' + currentUser.id, {
-          method: 'DELETE'
-        })
-        .then(r => r.json())
-        .then(data => {
-          if (data.success) {
-            alert('User deleted successfully');
-            closeModal();
-            location.reload();
-          } else {
-            alert('Error: ' + (data.error || 'Failed to delete user'));
-          }
-        })
-        .catch(err => {
-          console.error('Error:', err);
-          alert('Failed to delete user');
-        });
-      }
-    }
-
-    function escapeHtml(str) {
-      const div = document.createElement('div');
-      div.textContent = str || '';
-      return div.innerHTML;
+    async function quickDelete(id) {
+      if (!confirm('Delete this user? This cannot be undone.')) return;
+      const r = await fetch('/admin/users/api/' + id, { method: 'DELETE' });
+      const data = await r.json().catch(() => ({}));
+      if (data && data.success) return location.reload();
+      alert('Delete failed: ' + (data && data.error ? data.error : 'Unknown error'));
     }
   </script>
 </body>
 </html>`;
 }
 
-function escapeHtml(str = '') {
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
+/* ────────────────────────────────────────────────
+ *  HTML: USER DETAIL PAGE
+ * ──────────────────────────────────────────────── */
+
+function renderUserDetailPage(user, { editMode = false } = {}) {
+  const created = formatDateSafe(user.created_date);
+  const modified = formatDateSafe(user.last_modified);
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>User #${escapeHtml(user.account_number)} - Admin</title>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{
+      font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+      background:#020617;color:#e5e7eb;display:flex;height:100vh;
+    }
+    .sidebar{width:260px;background:#020617;border-right:1px solid #1f2937;padding:16px;display:flex;flex-direction:column}
+    .sidebar h1{margin:0 0 20px 0;font-size:18px}
+    .nav-section{margin-bottom:20px}
+    .nav-label{font-size:12px;color:#6B7280;text-transform:uppercase;font-weight:600;margin-bottom:8px;display:block}
+    .nav-item{display:block;padding:8px 12px;margin-bottom:4px;border-radius:6px;color:#e5e7eb;text-decoration:none;font-size:14px;transition:background .2s}
+    .nav-item:hover{background:#111827}
+    .nav-item.active{background:#1f2937;font-weight:600}
+    .logout-btn{margin-top:auto;width:100%;padding:8px;border-radius:999px;border:none;background:#2563eb;color:#fff;font-weight:600;cursor:pointer;font-size:13px}
+    .logout-btn:hover{background:#1d4ed8}
+
+    .main{flex:1;display:flex;flex-direction:column;overflow:hidden}
+    .topbar{
+      padding:16px 24px;border-bottom:1px solid #1f2937;
+      display:flex;align-items:center;justify-content:space-between;gap:16px;
+    }
+    .title-wrap{display:flex;flex-direction:column;gap:4px}
+    .title{font-size:22px;font-weight:700}
+    .sub{color:#94a3b8;font-size:12px}
+
+    .toolbar{display:flex;gap:10px;align-items:center}
+    .icon{
+      border:1px solid #334155;background:#0b1220;color:#e5e7eb;
+      border-radius:12px;padding:8px 12px;cursor:pointer;font-size:14px;
+      transition:transform .05s ease, opacity .2s ease, background .2s ease;
+    }
+    .icon:hover{opacity:.95;transform:translateY(-1px);background:#111827}
+    .icon.danger{border-color:#7f1d1d;background:#1a0b0b}
+    .icon.danger:hover{background:#2a0f0f}
+    .icon.primary{border-color:#1d4ed8;background:#0b1b44}
+    .icon.primary:hover{background:#0d2357}
+
+    .content{padding:24px;overflow:auto}
+    .card{
+      border:1px solid #1f2937;background:#020617;border-radius:16px;
+      padding:18px;max-width:980px;
+    }
+    .grid{
+      display:grid;
+      grid-template-columns:repeat(2, minmax(0, 1fr));
+      gap:14px;
+      margin-top:14px;
+    }
+    @media (max-width: 900px){
+      .grid{grid-template-columns:1fr}
+    }
+
+    .field{display:flex;flex-direction:column;gap:6px}
+    label{font-size:12px;color:#9CA3AF;text-transform:uppercase;font-weight:700;letter-spacing:.04em}
+    input, select{
+      padding:10px 12px;border-radius:10px;
+      border:1px solid #374151;background:#030712;color:#e5e7eb;
+      font-size:14px;
+    }
+    input[readonly], select:disabled{
+      opacity:.85;
+      background:#070b14;
+    }
+
+    .note{margin-top:14px;color:#94a3b8;font-size:12px}
+    .row{display:flex;gap:12px;flex-wrap:wrap;margin-top:14px}
+  </style>
+</head>
+<body>
+  <div class="sidebar">
+    <h1>Photo Admin</h1>
+    <div class="nav-section">
+      <span class="nav-label">Management</span>
+      <a href="/admin/users" class="nav-item active">👥 Users</a>
+      <a href="/admin/dashboard" class="nav-item">📷 Photo Admin</a>
+    </div>
+
+    <form method="POST" action="/admin/logout">
+      <button type="submit" class="logout-btn">Logout</button>
+    </form>
+  </div>
+
+  <div class="main">
+    <div class="topbar">
+      <div class="title-wrap">
+        <div class="title">${escapeHtml(user.first_name)} ${escapeHtml(user.last_name)} <span style="color:#64748b;font-weight:600">(#${escapeHtml(user.account_number)})</span></div>
+        <div class="sub">Created: ${escapeHtml(created)} • Last Modified: ${escapeHtml(modified)}</div>
+      </div>
+
+      <div class="toolbar">
+        <button class="icon" title="Close" onclick="closePage()">✕</button>
+        <button class="icon" id="editBtn" title="Edit" onclick="toggleEdit()">✏</button>
+        <button class="icon primary" id="saveBtn" title="Save" onclick="saveUser()" style="display:none">💾</button>
+        <button class="icon danger" title="Delete" onclick="deleteUser()">🗑</button>
+      </div>
+    </div>
+
+    <div class="content">
+      <div class="card">
+        <div class="grid">
+          <div class="field">
+            <label>Account Number</label>
+            <input id="account_number" value="${escapeHtml(user.account_number)}" readonly />
+          </div>
+
+          <div class="field">
+            <label>Status</label>
+            <select id="status">
+              <option value="active" ${user.status === 'active' ? 'selected' : ''}>active</option>
+              <option value="suspended" ${user.status === 'suspended' ? 'selected' : ''}>suspended</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label>First Name</label>
+            <input id="first_name" value="${escapeHtml(user.first_name)}" />
+          </div>
+
+          <div class="field">
+            <label>Last Name</label>
+            <input id="last_name" value="${escapeHtml(user.last_name)}" />
+          </div>
+
+          <div class="field">
+            <label>Email</label>
+            <input id="email" value="${escapeHtml(user.email)}" />
+          </div>
+
+          <div class="field">
+            <label>Phone</label>
+            <input id="phone" value="${escapeHtml(user.phone)}" />
+          </div>
+
+          <div class="field">
+            <label>Street Address</label>
+            <input id="street_address" value="${escapeHtml(user.street_address)}" />
+          </div>
+
+          <div class="field">
+            <label>City</label>
+            <input id="city" value="${escapeHtml(user.city)}" />
+          </div>
+
+          <div class="field">
+            <label>State</label>
+            <input id="state" value="${escapeHtml(user.state)}" />
+          </div>
+
+          <div class="field">
+            <label>Zip</label>
+            <input id="zip" value="${escapeHtml(user.zip)}" />
+          </div>
+
+          <div class="field">
+            <label>Timezone</label>
+            <input id="timezone" value="${escapeHtml(user.timezone)}" />
+          </div>
+
+          <div class="field">
+            <label>Account Balance</label>
+            <input id="account_balance" value="${escapeHtml(String(user.account_balance ?? '0'))}" />
+          </div>
+
+          <div class="field">
+            <label>Email Verified</label>
+            <select id="email_verified">
+              <option value="false" ${user.email_verified ? '' : 'selected'}>false</option>
+              <option value="true" ${user.email_verified ? 'selected' : ''}>true</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="note">
+          Double check before editing email/balance. Save writes directly to the database.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const userId = ${Number(user.id)};
+    let editMode = ${editMode ? 'true' : 'false'};
+
+    function closePage(){ window.location.href = '/admin/users'; }
+
+    function setInputsReadonly(isReadonly) {
+      const ids = [
+        'first_name','last_name','email','phone',
+        'street_address','city','state','zip',
+        'timezone','account_balance'
+      ];
+      ids.forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        if (isReadonly) el.setAttribute('readonly', 'readonly');
+        else el.removeAttribute('readonly');
+      });
+
+      const selects = ['status','email_verified'];
+      selects.forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.disabled = isReadonly;
+      });
+    }
+
+    function syncUi() {
+      document.getElementById('saveBtn').style.display = editMode ? 'inline-block' : 'none';
+      document.getElementById('editBtn').style.opacity = editMode ? '0.7' : '1';
+      setInputsReadonly(!editMode);
+    }
+
+    function toggleEdit(){
+      editMode = !editMode;
+      syncUi();
+    }
+
+    async function saveUser(){
+      if (!editMode) return;
+
+      const payload = {
+        status: document.getElementById('status').value,
+        first_name: document.getElementById('first_name').value,
+        last_name: document.getElementById('last_name').value,
+        email: document.getElementById('email').value,
+        phone: document.getElementById('phone').value,
+        street_address: document.getElementById('street_address').value,
+        city: document.getElementById('city').value,
+        state: document.getElementById('state').value,
+        zip: document.getElementById('zip').value,
+        timezone: document.getElementById('timezone').value,
+        account_balance: document.getElementById('account_balance').value,
+        email_verified: document.getElementById('email_verified').value === 'true'
+      };
+
+      const r = await fetch('/admin/users/api/' + userId, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await r.json().catch(() => ({}));
+      if (data && data.success) {
+        alert('Saved.');
+        editMode = false;
+        syncUi();
+        // refresh to show updated modified timestamp, etc.
+        location.reload();
+        return;
+      }
+      alert('Save failed: ' + (data && data.error ? data.error : 'Unknown error'));
+    }
+
+    async function deleteUser(){
+      if (!confirm('DELETE this user? This cannot be undone.')) return;
+      const r = await fetch('/admin/users/api/' + userId, { method: 'DELETE' });
+      const data = await r.json().catch(() => ({}));
+      if (data && data.success) return closePage();
+      alert('Delete failed: ' + (data && data.error ? data.error : 'Unknown error'));
+    }
+
+    // init
+    syncUi();
+
+    // If URL has ?edit=1 then force edit mode
+    try {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('edit') === '1') {
+        editMode = true;
+        syncUi();
+      }
+    } catch {}
+  </script>
+</body>
+</html>`;
 }
 
 /* ────────────────────────────────────────────────
- *  ROUTE REGISTRATION
+ *  ROUTES
  * ──────────────────────────────────────────────── */
 
 function registerUsersAdminRoutes(app, { requireAdmin }) {
   const pool = getPool();
 
-  // Main users page (HTML)
+  // HTML: List users
   app.get('/admin/users', requireAdmin, async (req, res) => {
     try {
-      const searchQuery = req.query.search || '';
-      
+      const searchQuery = (req.query.search || '').trim();
+
       let query = 'SELECT * FROM users WHERE 1=1';
       const params = [];
 
-      if (searchQuery.trim()) {
+      if (searchQuery) {
         query += ` AND (
-          first_name ILIKE $1 OR 
-          last_name ILIKE $1 OR 
-          email ILIKE $1 OR 
+          first_name ILIKE $1 OR
+          last_name ILIKE $1 OR
+          email ILIKE $1 OR
           phone ILIKE $1 OR
           account_number ILIKE $1
         )`;
-        params.push(`%${searchQuery.trim()}%`);
+        params.push(`%${searchQuery}%`);
       }
 
-      query += ' ORDER BY created_date DESC LIMIT 100';
-
+      query += ' ORDER BY created_date DESC LIMIT 200';
       const result = await pool.query(query, params);
-      
-      res.send(renderUsersPage(result.rows, searchQuery));
+      res.send(renderUsersListPage(result.rows, searchQuery));
     } catch (error) {
       console.error('Error fetching users:', error);
       res.status(500).send('Error loading users');
     }
   });
 
-  // API: Get single user details (JSON)
+  // HTML: User detail page
+  app.get('/admin/users/:id', requireAdmin, async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isFinite(id)) return res.status(400).send('Invalid user id');
+
+      const result = await pool.query('SELECT * FROM users WHERE id = $1', [id]);
+      if (result.rows.length === 0) return res.status(404).send('User not found');
+
+      const editMode = String(req.query.edit || '') === '1';
+      res.send(renderUserDetailPage(result.rows[0], { editMode }));
+    } catch (error) {
+      console.error('Error fetching user detail:', error);
+      res.status(500).send('Error loading user');
+    }
+  });
+
+  // API: Get single user details
   app.get('/admin/users/api/:id', requireAdmin, async (req, res) => {
     try {
-      const { id } = req.params;
+      const id = Number(req.params.id);
+      if (!Number.isFinite(id)) return res.status(400).json({ success: false, error: 'Invalid id' });
+
       const result = await pool.query('SELECT * FROM users WHERE id = $1', [id]);
-      
-      if (result.rows.length === 0) {
-        return res.status(404).json({ success: false, error: 'User not found' });
-      }
+      if (result.rows.length === 0) return res.status(404).json({ success: false, error: 'User not found' });
 
       res.json({ success: true, user: result.rows[0] });
     } catch (error) {
@@ -605,11 +566,86 @@ function registerUsersAdminRoutes(app, { requireAdmin }) {
     }
   });
 
-  // API: Update user status
+  // API: Full update user (admin)
+  app.put('/admin/users/api/:id', requireAdmin, async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isFinite(id)) return res.status(400).json({ success: false, error: 'Invalid id' });
+
+      // Allowed fields (admin-editable)
+      const allowed = [
+        'status',
+        'first_name',
+        'last_name',
+        'email',
+        'phone',
+        'street_address',
+        'city',
+        'state',
+        'zip',
+        'timezone',
+        'account_balance',
+        'email_verified'
+      ];
+
+      const updates = [];
+      const values = [];
+      let idx = 1;
+
+      for (const key of allowed) {
+        if (Object.prototype.hasOwnProperty.call(req.body || {}, key)) {
+          let val = req.body[key];
+
+          if (key === 'status') {
+            if (!['active', 'suspended'].includes(String(val))) {
+              return res.status(400).json({ success: false, error: 'Invalid status' });
+            }
+            val = String(val);
+          }
+
+          if (key === 'account_balance') {
+            const n = Number(val);
+            if (!Number.isFinite(n)) {
+              return res.status(400).json({ success: false, error: 'Invalid account_balance' });
+            }
+            val = n;
+          }
+
+          if (key === 'email_verified') {
+            val = Boolean(val);
+          }
+
+          updates.push(`${key} = $${idx++}`);
+          values.push(val);
+        }
+      }
+
+      // Nothing to update
+      if (updates.length === 0) {
+        return res.json({ success: true, message: 'No changes' });
+      }
+
+      updates.push(`last_modified = $${idx++}`);
+      values.push(Date.now());
+
+      values.push(id);
+      const sql = `UPDATE users SET ${updates.join(', ')} WHERE id = $${idx} RETURNING id`;
+      const result = await pool.query(sql, values);
+
+      if (result.rows.length === 0) return res.status(404).json({ success: false, error: 'User not found' });
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Error updating user:', error);
+      res.status(500).json({ success: false, error: 'Failed to update user' });
+    }
+  });
+
+  // API: Update user status (kept for compatibility)
   app.post('/admin/users/api/:id/status', requireAdmin, async (req, res) => {
     try {
-      const { id } = req.params;
-      const { status } = req.body;
+      const id = Number(req.params.id);
+      const status = String((req.body || {}).status || '');
+      if (!Number.isFinite(id)) return res.status(400).json({ success: false, error: 'Invalid id' });
 
       if (!['active', 'suspended'].includes(status)) {
         return res.status(400).json({ success: false, error: 'Invalid status' });
@@ -620,10 +656,7 @@ function registerUsersAdminRoutes(app, { requireAdmin }) {
         [status, Date.now(), id]
       );
 
-      if (result.rows.length === 0) {
-        return res.status(404).json({ success: false, error: 'User not found' });
-      }
-
+      if (result.rows.length === 0) return res.status(404).json({ success: false, error: 'User not found' });
       res.json({ success: true });
     } catch (error) {
       console.error('Error updating user status:', error);
@@ -634,13 +667,11 @@ function registerUsersAdminRoutes(app, { requireAdmin }) {
   // API: Delete user
   app.delete('/admin/users/api/:id', requireAdmin, async (req, res) => {
     try {
-      const { id } = req.params;
-      
-      const result = await pool.query('DELETE FROM users WHERE id = $1 RETURNING id', [id]);
+      const id = Number(req.params.id);
+      if (!Number.isFinite(id)) return res.status(400).json({ success: false, error: 'Invalid id' });
 
-      if (result.rows.length === 0) {
-        return res.status(404).json({ success: false, error: 'User not found' });
-      }
+      const result = await pool.query('DELETE FROM users WHERE id = $1 RETURNING id', [id]);
+      if (result.rows.length === 0) return res.status(404).json({ success: false, error: 'User not found' });
 
       res.json({ success: true });
     } catch (error) {

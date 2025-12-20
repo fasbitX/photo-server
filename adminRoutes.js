@@ -376,6 +376,10 @@ function renderDashboard({ folderNames, currentFolder, files }) {
 <body>
   <div class="sidebar">
     <div>
+    <!-- NEW: top menu -->
+    <div class="admin-menu">
+      <a class="admin-menu-item" href="/admin/users">Users</a>
+    </div>
       <h1>Photo Admin</h1>
       <div class="folders-header">
         <span>Folders</span>

@@ -19,8 +19,14 @@
     "express-session": "^1.18.1",
     "multer": "^2.0.2",
     "nodemailer": "^6.9.15",
+    "react-dom": "19.1.0",
+    "react-native-web": "^0.21.0",
     "sqlite3": "^5.1.7",
     "tweetnacl": "^1.0.3",
     "tweetnacl-util": "^0.15.1"
+  },
+  "devDependencies": {
+    "@types/react": "~19.1.10",
+    "typescript": "~5.9.2"
   }
 }

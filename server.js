@@ -12,6 +12,7 @@ const { registerAdminRoutes } = require('./adminRoutes');
 const { registerAuthRoutes } = require('./routes-auth');
 const { registerUserDashboardRoutes } = require('./routes-user-dashboard');
 const { registerMobileApiRoutes } = require('./routes-mobile-api');
+const { registerUsersAdminRoutes } = require('./routes-users-admin');
 
 const app = express();
 
@@ -200,6 +201,9 @@ async function startServer() {
     // CRITICAL: Admin routes registered FIRST to avoid conflicts
     // Admin routes (/admin/*, requires admin login)
     registerAdminRoutes(app, { requireAdmin, state });
+
+    // Admin users management routes (/admin/users/*)
+    registerUsersAdminRoutes(app, { requireAdmin });
 
     // User authentication routes (/, /login, /signup, etc.)
     registerAuthRoutes(app);

@@ -559,6 +559,14 @@ const styles = StyleSheet.create({
     padding: 12,
     fontSize: 16,
     color: '#FFFFFF',
+    ...Platform.select({
+      web: {
+        outlineStyle: 'none',
+        WebkitTextFillColor: '#FFFFFF',
+        WebkitBoxShadow: '0 0 0px 1000px #030712 inset',
+      },
+      default: {},
+    }),
   },
   row: {
     flexDirection: 'row',

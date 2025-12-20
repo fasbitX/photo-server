@@ -9,9 +9,12 @@ import {
   TouchableOpacity,
   ScrollView,
 } from 'react-native';
+import { NavigationContainer } from '@react-navigation/native';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 
+import { AuthProvider, useAuth } from './auth';
 import {
   AdminProvider,
   useAdmin,
@@ -19,8 +22,14 @@ import {
 } from './admin';
 import { uploadPhotosWithController } from './controller';
 import { CLIENT_ID, SECRET_KEY_BASE64 } from './config';
+import LoginScreen from './LoginScreen';
+import SignupScreen from './SignupScreen';
+import DashboardScreen from './DashboardScreen';
 
-function MainScreen() {
+const Stack = createNativeStackNavigator();
+
+// Your existing MainScreen (photo upload functionality)
+function PhotoUploadScreen() {
   const [images, setImages] = useState([]);
   const [sending, setSending] = useState(false);
   const [adminVisible, setAdminVisible] = useState(false);
@@ -36,6 +45,8 @@ function MainScreen() {
     updateGalleryItem,
   } = useAdmin();
 
+  const { logout } = useAuth();
+
   // ---------- Image picker (multi-select) ----------
   const pickImages = async () => {
     try {
@@ -49,7 +60,7 @@ function MainScreen() {
       logInfo('Opening image library for multi-select');
 
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'], // new non-deprecated API
+        mediaTypes: ['images'],
         allowsMultipleSelection: true,
         quality: 1,
       });
@@ -133,6 +144,13 @@ function MainScreen() {
     }
   };
 
+  const handleLogout = () => {
+    Alert.alert('Logout', 'Are you sure you want to logout?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Logout', style: 'destructive', onPress: logout },
+    ]);
+  };
+
   const sendButtonLabel = sending
     ? 'Sending...'
     : images.length > 1
@@ -141,15 +159,24 @@ function MainScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Gear icon to open Admin settings */}
-      <TouchableOpacity
-        style={styles.gearButton}
-        onPress={() => setAdminVisible(true)}
-      >
-        <Ionicons name="settings-sharp" size={24} color="#9CA3AF" />
-      </TouchableOpacity>
+      {/* Header with logout */}
+      <View style={styles.header}>
+        <TouchableOpacity
+          style={styles.gearButton}
+          onPress={() => setAdminVisible(true)}
+        >
+          <Ionicons name="settings-sharp" size={24} color="#9CA3AF" />
+        </TouchableOpacity>
 
-      <Text style={styles.title}>Simple Photo Sender</Text>
+        <TouchableOpacity
+          style={styles.logoutButton}
+          onPress={handleLogout}
+        >
+          <Ionicons name="log-out-outline" size={24} color="#9CA3AF" />
+        </TouchableOpacity>
+      </View>
+
+      <Text style={styles.title}>Photo Sender</Text>
 
       {/* Main content: either Send preview or Gallery */}
       {activeTab === 'send' ? (
@@ -266,11 +293,46 @@ function GalleryTab({ gallery }) {
   );
 }
 
+// Main navigation component
+function AppNavigator() {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return null; // Could add a splash screen here
+  }
+
+  return (
+    <Stack.Navigator
+      screenOptions={{
+        headerShown: false,
+        contentStyle: { backgroundColor: '#111827' },
+      }}
+    >
+      {user ? (
+        <>
+          <Stack.Screen name="Dashboard" component={DashboardScreen} />
+          <Stack.Screen name="PhotoUpload" component={PhotoUploadScreen} />
+        </>
+      ) : (
+        <>
+          <Stack.Screen name="Login" component={LoginScreen} />
+          <Stack.Screen name="Signup" component={SignupScreen} />
+        </>
+      )}
+    </Stack.Navigator>
+  );
+}
+
+// Root App component
 export default function App() {
   return (
-    <AdminProvider>
-      <MainScreen />
-    </AdminProvider>
+    <AuthProvider>
+      <AdminProvider>
+        <NavigationContainer>
+          <AppNavigator />
+        </NavigationContainer>
+      </AdminProvider>
+    </AuthProvider>
   );
 }
 
@@ -282,10 +344,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: 16,
   },
-  gearButton: {
+  header: {
     position: 'absolute',
     top: 40,
-    right: 20,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+  },
+  gearButton: {
+    padding: 8,
+  },
+  logoutButton: {
     padding: 8,
   },
   title: {

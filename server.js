@@ -11,6 +11,7 @@ const { registerUploadRoutes } = require('./uploadRoutes');
 const { registerAdminRoutes } = require('./adminRoutes');
 const { registerAuthRoutes } = require('./routes-auth');
 const { registerUserDashboardRoutes } = require('./routes-user-dashboard');
+const { registerMobileApiRoutes } = require('./routes-mobile-api');
 
 const app = express();
 
@@ -208,6 +209,9 @@ async function startServer() {
 
     // Upload routes for mobile app
     registerUploadRoutes(app);
+
+    // Mobile API routes (for mobile app)
+    registerMobileApiRoutes(app);
 
     /* ──────────────────────────────────────────────
      *  START SERVER

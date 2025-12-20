@@ -589,11 +589,15 @@ const styles = StyleSheet.create({
   },
   picker: {
     color: '#FFFFFF',
+    backgroundColor: '#030712',
     height: 48,
     ...Platform.select({
       web: {
         paddingLeft: 8,
         paddingRight: 8,
+        backgroundColor: '#030712',
+        borderWidth: 0,
+        outline: 'none',
       },
       default: {},
     }),

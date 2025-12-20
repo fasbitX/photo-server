@@ -97,18 +97,32 @@ function registerMobileApiRoutes(app) {
         return res.status(400).json({ error: 'Password must be at least 8 characters' });
       }
       
-      // Create user
-      const result = await createUser({
-        firstName, lastName, streetAddress, city, state, zip,
-        phone, email, password
-      });
+      // Create user - this will throw error if phone/email already exists
+      let result;
+      try {
+        result = await createUser({
+          firstName, lastName, streetAddress, city, state, zip,
+          phone, email, password
+        });
+      } catch (createErr) {
+        // Handle specific database errors
+        let errorMsg = 'Signup failed';
+        if (createErr.message.includes('Phone number already registered')) {
+          errorMsg = 'This phone number is already registered. Please use a different phone number or log in.';
+        } else if (createErr.message.includes('Email already registered')) {
+          errorMsg = 'This email is already registered. Please use a different email or log in.';
+        } else if (createErr.message.includes('already registered')) {
+          errorMsg = createErr.message;
+        }
+        return res.status(400).json({ error: errorMsg });
+      }
       
-      // Send verification email
+      // User created successfully - now send verification email
       try {
         await sendVerificationEmail(email, result.verificationToken, req);
       } catch (emailError) {
         console.error('Failed to send verification email:', emailError);
-        // Continue anyway - user is created
+        // Continue anyway - user is created, just email failed
       }
       
       res.json({ 
@@ -118,11 +132,7 @@ function registerMobileApiRoutes(app) {
       
     } catch (err) {
       console.error('Mobile signup error:', err);
-      let errorMsg = 'Signup failed';
-      if (err.message.includes('already registered')) {
-        errorMsg = err.message;
-      }
-      res.status(400).json({ error: errorMsg });
+      res.status(500).json({ error: 'An unexpected error occurred. Please try again.' });
     }
   });
   

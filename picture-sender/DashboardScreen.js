@@ -7,18 +7,44 @@ import {
   StyleSheet,
   ScrollView,
   Alert,
+  Dimensions,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from './auth';
 
+const SCREEN_WIDTH = Dimensions.get('window').width;
+const MAX_WIDTH = 288; // 4 inches at ~72 DPI
+
 export default function DashboardScreen({ navigation }) {
   const { user, logout } = useAuth();
 
-  const handleLogout = () => {
-    Alert.alert('Logout', 'Are you sure you want to logout?', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Logout', style: 'destructive', onPress: logout },
-    ]);
+  const handleLogout = async () => {
+    console.log('Logout button pressed - executing logout');
+    
+    // For web, skip the alert and logout directly
+    if (Platform.OS === 'web') {
+      await logout();
+      return;
+    }
+    
+    // For mobile, show confirmation
+    Alert.alert(
+      'Logout', 
+      'Are you sure you want to logout?', 
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Logout', 
+          style: 'destructive', 
+          onPress: async () => {
+            console.log('Logging out...');
+            await logout();
+          }
+        },
+      ],
+      { cancelable: true }
+    );
   };
 
   const handleNavigation = (section) => {
@@ -29,81 +55,103 @@ export default function DashboardScreen({ navigation }) {
     }
   };
 
+  const fullName = `${user?.first_name || ''} ${user?.last_name || ''}`.trim() || 'User';
+
   return (
-    <View style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.greeting}>Welcome back,</Text>
-          <Text style={styles.userName}>{user?.first_name || 'User'}</Text>
+    <View style={styles.outerContainer}>
+      <View style={styles.container}>
+        {/* Header */}
+        <View style={styles.header}>
+          <View style={styles.headerText}>
+            <Text style={styles.greeting}>Welcome,</Text>
+            <Text style={styles.userName}>{fullName}</Text>
+          </View>
+          <TouchableOpacity 
+            onPress={handleLogout} 
+            style={styles.logoutButton}
+            activeOpacity={0.6}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Ionicons name="log-out-outline" size={28} color="#9CA3AF" />
+          </TouchableOpacity>
         </View>
-        <TouchableOpacity onPress={handleLogout} style={styles.settingsButton}>
-          <Ionicons name="log-out-outline" size={24} color="#9CA3AF" />
-        </TouchableOpacity>
+
+        <ScrollView contentContainerStyle={styles.content}>
+          {/* Account Info Card with Balance */}
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Account Information</Text>
+            
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Account Number</Text>
+              <Text style={styles.infoValue}>{user?.account_number || 'N/A'}</Text>
+            </View>
+            
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Email</Text>
+              <Text style={styles.infoValue}>{user?.email || 'N/A'}</Text>
+            </View>
+            
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Status</Text>
+              <Text style={[styles.infoValue, styles.statusActive]}>
+                {user?.status || 'Active'}
+              </Text>
+            </View>
+
+            {/* Account Balance on one line */}
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Account Bal.</Text>
+              <Text style={styles.balanceInline}>
+                ${parseFloat(user?.account_balance || 0).toFixed(2)}
+              </Text>
+            </View>
+          </View>
+
+          {/* Navigation Pills */}
+          <View style={styles.navContainer}>
+            <TouchableOpacity
+              style={styles.navPill}
+              onPress={() => handleNavigation('Contacts')}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="people" size={24} color="#FFFFFF" />
+              <Text style={styles.navPillText}>Contacts</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.navPill}
+              onPress={() => handleNavigation('Messages')}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="chatbubbles" size={24} color="#FFFFFF" />
+              <Text style={styles.navPillText}>Messages</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.navPill}
+              onPress={() => handleNavigation('Images')}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="images" size={24} color="#FFFFFF" />
+              <Text style={styles.navPillText}>Images</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
       </View>
-
-      <ScrollView contentContainerStyle={styles.content}>
-        {/* Account Info Card */}
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Account Information</Text>
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Account Number</Text>
-            <Text style={styles.infoValue}>{user?.account_number || 'N/A'}</Text>
-          </View>
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Email</Text>
-            <Text style={styles.infoValue}>{user?.email || 'N/A'}</Text>
-          </View>
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Status</Text>
-            <Text style={[styles.infoValue, styles.statusActive]}>
-              {user?.status || 'Active'}
-            </Text>
-          </View>
-        </View>
-
-        {/* Balance Card */}
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Account Balance</Text>
-          <Text style={styles.balance}>
-            ${parseFloat(user?.account_balance || 0).toFixed(2)}
-          </Text>
-        </View>
-
-        {/* Navigation Pills */}
-        <View style={styles.navContainer}>
-          <TouchableOpacity
-            style={styles.navPill}
-            onPress={() => handleNavigation('Contacts')}
-          >
-            <Ionicons name="people" size={24} color="#FFFFFF" />
-            <Text style={styles.navPillText}>Contacts</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.navPill}
-            onPress={() => handleNavigation('Messages')}
-          >
-            <Ionicons name="chatbubbles" size={24} color="#FFFFFF" />
-            <Text style={styles.navPillText}>Messages</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.navPill}
-            onPress={() => handleNavigation('Images')}
-          >
-            <Ionicons name="images" size={24} color="#FFFFFF" />
-            <Text style={styles.navPillText}>Images</Text>
-          </TouchableOpacity>
-        </View>
-      </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  outerContainer: {
+    flex: 1,
+    backgroundColor: '#000000',
+    alignItems: 'center',
+  },
   container: {
     flex: 1,
+    width: '100%',
+    maxWidth: MAX_WIDTH,
     backgroundColor: '#111827',
   },
   header: {
@@ -116,6 +164,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#1F2937',
   },
+  headerText: {
+    flex: 1,
+  },
   greeting: {
     fontSize: 14,
     color: '#9CA3AF',
@@ -126,8 +177,9 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     marginTop: 4,
   },
-  settingsButton: {
-    padding: 8,
+  logoutButton: {
+    padding: 12,
+    marginLeft: 8,
   },
   content: {
     padding: 16,
@@ -164,11 +216,10 @@ const styles = StyleSheet.create({
     color: '#22C55E',
     textTransform: 'capitalize',
   },
-  balance: {
-    fontSize: 42,
-    fontWeight: 'bold',
+  balanceInline: {
+    fontSize: 14,
     color: '#2563EB',
-    marginTop: 8,
+    fontWeight: 'bold',
   },
   navContainer: {
     marginTop: 8,

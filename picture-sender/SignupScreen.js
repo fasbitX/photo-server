@@ -244,6 +244,51 @@ export default function SignupScreen({ navigation }) {
                 <Picker.Item label="NY" value="NY" />
                 <Picker.Item label="MA" value="MA" />
                 <Picker.Item label="CT" value="CT" />
+                <Picker.Item label="AL" value="AL" />
+                <Picker.Item label="AK" value="AK" />
+                <Picker.Item label="AZ" value="AZ" />
+                <Picker.Item label="AR" value="AR" />
+                <Picker.Item label="CA" value="CA" />
+                <Picker.Item label="CO" value="CO" />
+                <Picker.Item label="DE" value="DE" />
+                <Picker.Item label="FL" value="FL" />
+                <Picker.Item label="GA" value="GA" />
+                <Picker.Item label="HI" value="HI" />
+                <Picker.Item label="ID" value="ID" />
+                <Picker.Item label="IL" value="IL" />
+                <Picker.Item label="IN" value="IN" />
+                <Picker.Item label="IA" value="IA" />
+                <Picker.Item label="KS" value="KS" />
+                <Picker.Item label="KY" value="KY" />
+                <Picker.Item label="LA" value="LA" />
+                <Picker.Item label="ME" value="ME" />
+                <Picker.Item label="MD" value="MD" />
+                <Picker.Item label="MI" value="MI" />
+                <Picker.Item label="MN" value="MN" />
+                <Picker.Item label="MS" value="MS" />
+                <Picker.Item label="MO" value="MO" />
+                <Picker.Item label="MT" value="MT" />
+                <Picker.Item label="NE" value="NE" />
+                <Picker.Item label="NV" value="NV" />
+                <Picker.Item label="NJ" value="NJ" />
+                <Picker.Item label="NM" value="NM" />
+                <Picker.Item label="NC" value="NC" />
+                <Picker.Item label="ND" value="ND" />
+                <Picker.Item label="OH" value="OH" />
+                <Picker.Item label="OK" value="OK" />
+                <Picker.Item label="OR" value="OR" />
+                <Picker.Item label="PA" value="PA" />
+                <Picker.Item label="RI" value="RI" />
+                <Picker.Item label="SC" value="SC" />
+                <Picker.Item label="SD" value="SD" />
+                <Picker.Item label="TN" value="TN" />
+                <Picker.Item label="TX" value="TX" />
+                <Picker.Item label="UT" value="UT" />
+                <Picker.Item label="VA" value="VA" />
+                <Picker.Item label="WA" value="WA" />
+                <Picker.Item label="WV" value="WV" />
+                <Picker.Item label="WI" value="WI" />
+                <Picker.Item label="WY" value="WY" />
               </Picker>
             </View>
           </View>
@@ -271,7 +316,7 @@ export default function SignupScreen({ navigation }) {
 
         <View style={styles.inputGroup}>
           <Text style={styles.label}>
-            Phone<Text style={styles.required}>*</Text>
+            Phone Number<Text style={styles.required}>*</Text>
           </Text>
           <TextInput
             ref={phoneRef}
@@ -297,10 +342,11 @@ export default function SignupScreen({ navigation }) {
             style={styles.input}
             value={formData.email}
             onChangeText={val => updateField('email', val)}
-            placeholder="your@email.com"
+            placeholder="john.doe@example.com"
             placeholderTextColor="#6B7280"
-            autoCapitalize="none"
             keyboardType="email-address"
+            autoCapitalize="none"
+            autoCorrect={false}
             textContentType="emailAddress"
             autoComplete="email"
             onSubmitEditing={() => dobMonthRef.current?.focus()}
@@ -318,13 +364,12 @@ export default function SignupScreen({ navigation }) {
               onValueChange={val => updateField('gender', val)}
               style={styles.picker}
               dropdownIconColor="#9CA3AF"
-              itemStyle={styles.pickerItem}
             >
-              <Picker.Item label="Select..." value="" />
+              <Picker.Item label="Select Gender" value="" />
               <Picker.Item label="Male" value="male" />
               <Picker.Item label="Female" value="female" />
               <Picker.Item label="Other" value="other" />
-              <Picker.Item label="Prefer not to say" value="prefer_not_to_say" />
+              <Picker.Item label="Prefer not to say" value="prefer-not-to-say" />
             </Picker>
           </View>
         </View>
@@ -334,16 +379,14 @@ export default function SignupScreen({ navigation }) {
             Date of Birth<Text style={styles.required}>*</Text>
           </Text>
           <View style={styles.row}>
-            <View style={[styles.dateInputWrapper, styles.third]}>
+            <View style={styles.dateInputWrapper}>
               <TextInput
                 ref={dobMonthRef}
                 style={styles.input}
                 value={formData.dobMonth}
                 onChangeText={val => {
-                  // Only allow 1-2 digits
-                  if (val === '' || /^\d{1,2}$/.test(val)) {
-                    updateField('dobMonth', val);
-                    // Auto-advance to next field when 2 digits entered
+                  if (val.length <= 2) {
+                    updateField('dobMonth', val.replace(/[^0-9]/g, ''));
                     if (val.length === 2) {
                       dobDayRef.current?.focus();
                     }
@@ -359,16 +402,14 @@ export default function SignupScreen({ navigation }) {
               <Text style={styles.dateLabel}>Month</Text>
             </View>
 
-            <View style={[styles.dateInputWrapper, styles.third]}>
+            <View style={styles.dateInputWrapper}>
               <TextInput
                 ref={dobDayRef}
                 style={styles.input}
                 value={formData.dobDay}
                 onChangeText={val => {
-                  // Only allow 1-2 digits
-                  if (val === '' || /^\d{1,2}$/.test(val)) {
-                    updateField('dobDay', val);
-                    // Auto-advance to next field when 2 digits entered
+                  if (val.length <= 2) {
+                    updateField('dobDay', val.replace(/[^0-9]/g, ''));
                     if (val.length === 2) {
                       dobYearRef.current?.focus();
                     }
@@ -384,19 +425,14 @@ export default function SignupScreen({ navigation }) {
               <Text style={styles.dateLabel}>Day</Text>
             </View>
 
-            <View style={[styles.dateInputWrapper, styles.third]}>
+            <View style={styles.dateInputWrapper}>
               <TextInput
                 ref={dobYearRef}
                 style={styles.input}
                 value={formData.dobYear}
                 onChangeText={val => {
-                  // Only allow 4 digits
-                  if (val === '' || /^\d{1,4}$/.test(val)) {
-                    updateField('dobYear', val);
-                    // Auto-advance to next field when 4 digits entered
-                    if (val.length === 4) {
-                      passwordRef.current?.focus();
-                    }
+                  if (val.length <= 4) {
+                    updateField('dobYear', val.replace(/[^0-9]/g, ''));
                   }
                 }}
                 placeholder="YYYY"
@@ -480,6 +516,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#111827',
     padding: 16,
     paddingVertical: 40,
+    alignItems: 'center', // Center the card
   },
   card: {
     backgroundColor: '#020617',
@@ -487,6 +524,8 @@ const styles = StyleSheet.create({
     padding: 24,
     borderWidth: 1,
     borderColor: '#1F2937',
+    width: '100%',
+    maxWidth: 400, // ADDED: Max width of 400px (4 inches)
   },
   title: {
     fontSize: 28,

@@ -113,20 +113,26 @@ function registerAuthRoutes(app) {
       // Send verification email
       try {
         await sendVerificationEmail(email, result.verificationToken, req);
-        res.send(renderVerificationPending(email, null)); // null means don't show test link
+        res.send(renderVerificationPending(email, null));
       } catch (emailError) {
         console.error('Failed to send verification email:', emailError);
-        // Still show success but with test link since email failed
         const verifyUrl = `${req.protocol}://${req.get('host')}/verify-email?token=${result.verificationToken}`;
         res.send(renderVerificationPending(email, verifyUrl, 'Email sending failed. Use the link below to verify.'));
       }
       
     } catch (err) {
       console.error('Signup error:', err);
+      
+      // Better error messages
       let errorMsg = 'An error occurred. Please try again.';
-      if (err.message.includes('already registered')) {
+      if (err.message.includes('Phone number already registered')) {
+        errorMsg = 'This phone number is already registered. Please use a different phone number or log in.';
+      } else if (err.message.includes('Email already registered')) {
+        errorMsg = 'This email is already registered. Please use a different email or log in.';
+      } else if (err.message.includes('already registered')) {
         errorMsg = err.message;
       }
+      
       res.send(renderSignupPage(errorMsg, req.body));
     }
   });
@@ -181,14 +187,12 @@ function registerAuthRoutes(app) {
         res.send(renderMessage('Reset Link Sent', 'A password reset link has been sent to your email address. Please check your inbox.'));
       } catch (emailError) {
         console.error('Failed to send reset email:', emailError);
-        // Still show test link since email failed
         const resetUrl = `${req.protocol}://${req.get('host')}/reset-password?token=${token}`;
         res.send(renderMessage('Email Error', `Failed to send email. Use this link to reset: <a href="${resetUrl}">${resetUrl}</a>`));
       }
       
     } catch (err) {
       console.error('Forgot password error:', err);
-      // Don't reveal if email exists or not
       res.send(renderMessage('Reset Link Sent', 'If an account exists with that email, a reset link has been sent.'));
     }
   });
@@ -254,21 +258,42 @@ function getBaseStyles() {
         display: flex;
         align-items: center;
         justify-content: center;
-        padding: 20px;
+        padding: 10px;
       }
       .container {
         background: white;
-        padding: 40px;
+        padding: 24px;
         border-radius: 12px;
         box-shadow: 0 20px 60px rgba(0,0,0,0.3);
         width: 100%;
-        max-width: 500px;
+        max-width: 400px;
       }
-      h1 { margin-bottom: 10px; font-size: 28px; color: #667eea; }
-      h2 { margin-bottom: 20px; font-size: 20px; color: #666; }
-      p { margin-bottom: 15px; line-height: 1.6; }
-      .form-group { margin-bottom: 20px; }
-      label { display: block; margin-bottom: 6px; font-weight: 500; color: #555; }
+      h1 { 
+        margin-bottom: 8px; 
+        font-size: 24px; 
+        color: #667eea;
+      }
+      h2 { 
+        margin-bottom: 20px; 
+        font-size: 16px; 
+        color: #666;
+        font-weight: normal;
+      }
+      p { 
+        margin-bottom: 15px; 
+        line-height: 1.6;
+        font-size: 14px;
+      }
+      .form-group { 
+        margin-bottom: 16px; 
+      }
+      label { 
+        display: block; 
+        margin-bottom: 6px; 
+        font-weight: 500; 
+        color: #555;
+        font-size: 14px;
+      }
       input, select {
         width: 100%;
         padding: 12px;
@@ -276,6 +301,25 @@ function getBaseStyles() {
         border-radius: 6px;
         font-size: 14px;
         transition: border 0.3s;
+        background: white;
+        color: #333;
+      }
+      /* Fix for select dropdowns - ensure black text on white background */
+      select {
+        background-color: white;
+        color: #333;
+        -webkit-appearance: none;
+        -moz-appearance: none;
+        appearance: none;
+        background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+        background-repeat: no-repeat;
+        background-position: right 8px center;
+        background-size: 20px;
+        padding-right: 40px;
+      }
+      select option {
+        background: white;
+        color: #333;
       }
       input:focus, select:focus {
         outline: none;
@@ -302,8 +346,9 @@ function getBaseStyles() {
       }
       .link {
         text-align: center;
-        margin-top: 20px;
+        margin-top: 16px;
         color: #666;
+        font-size: 14px;
       }
       .link a {
         color: #667eea;
@@ -319,8 +364,9 @@ function getBaseStyles() {
         padding: 12px;
         border-radius: 6px;
         margin-bottom: 16px;
+        border-left: 4px solid #c33;
         font-size: 14px;
-        border: 1px solid #fcc;
+        line-height: 1.4;
       }
       .success {
         background: #efe;
@@ -328,11 +374,38 @@ function getBaseStyles() {
         padding: 12px;
         border-radius: 6px;
         margin-bottom: 16px;
+        border-left: 4px solid #2a7;
         font-size: 14px;
-        border: 1px solid #cfc;
+        line-height: 1.4;
       }
-      .row { display: flex; gap: 12px; }
-      .row .form-group { flex: 1; }
+      .row {
+        display: flex;
+        gap: 12px;
+      }
+      .row .form-group {
+        flex: 1;
+      }
+      
+      /* Mobile optimization for very small screens */
+      @media (max-width: 400px) {
+        .container {
+          padding: 20px 16px;
+          max-width: 100%;
+        }
+        h1 {
+          font-size: 22px;
+        }
+        h2 {
+          font-size: 14px;
+        }
+        .row {
+          flex-direction: column;
+          gap: 0;
+        }
+        input, select, button {
+          font-size: 16px; /* Prevents zoom on iOS */
+        }
+      }
     </style>
   `;
 }
@@ -342,7 +415,7 @@ function renderHomePage() {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Fasbit - Secure Photo Sharing</title>
   ${getBaseStyles()}
 </head>
@@ -350,7 +423,7 @@ function renderHomePage() {
   <div class="container">
     <h1>Welcome to Fasbit</h1>
     <p>Secure photo sharing and account management</p>
-    <div style="margin-top: 30px;">
+    <div style="margin-top: 24px;">
       <a href="/login"><button>Log In</button></a>
       <div class="link">
         Don't have an account? <a href="/signup">Sign Up</a>
@@ -366,7 +439,7 @@ function renderLoginPage(error = '') {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Login - Fasbit</title>
   ${getBaseStyles()}
 </head>
@@ -402,7 +475,7 @@ function renderSignupPage(error = '', formData = {}) {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Sign Up - Fasbit</title>
   ${getBaseStyles()}
 </head>
@@ -437,7 +510,6 @@ function renderSignupPage(error = '', formData = {}) {
           <label>State</label>
           <select name="state" required>
             <option value="">Select...</option>
-            <option value="VT" ${formData.state === 'VT' ? 'selected' : ''}>Vermont</option>
             <option value="AL" ${formData.state === 'AL' ? 'selected' : ''}>Alabama</option>
             <option value="AK" ${formData.state === 'AK' ? 'selected' : ''}>Alaska</option>
             <option value="AZ" ${formData.state === 'AZ' ? 'selected' : ''}>Arizona</option>
@@ -531,7 +603,7 @@ function renderVerificationPending(email, verifyUrl = null, errorMsg = null) {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Verify Email - Fasbit</title>
   ${getBaseStyles()}
 </head>
@@ -562,7 +634,7 @@ function renderForgotPasswordPage(error = '') {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Forgot Password - Fasbit</title>
   ${getBaseStyles()}
 </head>
@@ -591,7 +663,7 @@ function renderResetPasswordPage(token, error = '') {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Reset Password - Fasbit</title>
   ${getBaseStyles()}
 </head>
@@ -622,7 +694,7 @@ function renderMessage(title, message) {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>${title} - Fasbit</title>
   ${getBaseStyles()}
 </head>

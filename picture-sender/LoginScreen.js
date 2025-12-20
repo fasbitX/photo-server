@@ -6,24 +6,28 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  KeyboardAvoidingView,
-  Platform,
   ScrollView,
-  Alert,
   ActivityIndicator,
+  Alert,
+  Platform,
 } from 'react-native';
 import { useAuth } from './auth';
+import { SERVER_HOST, SERVER_PORT, USE_HTTPS } from './config';
 
 export default function LoginScreen({ navigation }) {
+  const { login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [serverUrl, setServerUrl] = useState('');
   const [loading, setLoading] = useState(false);
-  const { login } = useAuth();
+
+  // Build server URL from config
+  const serverUrl = USE_HTTPS
+    ? `https://${SERVER_HOST}${SERVER_PORT === '443' ? '' : `:${SERVER_PORT}`}`
+    : `http://${SERVER_HOST}${SERVER_PORT === '80' ? '' : `:${SERVER_PORT}`}`;
 
   const handleLogin = async () => {
-    if (!email || !password || !serverUrl) {
-      Alert.alert('Error', 'Please fill in all fields');
+    if (!email || !password) {
+      Alert.alert('Error', 'Please enter email and password');
       return;
     }
 
@@ -32,119 +36,108 @@ export default function LoginScreen({ navigation }) {
     setLoading(false);
 
     if (!result.success) {
-      Alert.alert('Login Failed', result.error || 'Invalid credentials');
+      Alert.alert('Login Failed', result.error || 'Please check your credentials');
     }
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="handled"
-      >
-        <View style={styles.formContainer}>
-          <Text style={styles.title}>Log In</Text>
-          <Text style={styles.subtitle}>Welcome back</Text>
+    <View style={styles.outerContainer}>
+      <ScrollView contentContainerStyle={styles.container}>
+        <View style={styles.card}>
+          <Text style={styles.title}>Welcome Back</Text>
+          <Text style={styles.subtitle}>Sign in to continue</Text>
 
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>Server URL</Text>
+            <Text style={styles.label}>Email<Text style={styles.required}>*</Text></Text>
             <TextInput
               style={styles.input}
-              placeholder="http://your-server.com:4000"
-              placeholderTextColor="#9CA3AF"
-              value={serverUrl}
-              onChangeText={setServerUrl}
-              autoCapitalize="none"
-              autoCorrect={false}
-              keyboardType="url"
-            />
-          </View>
-
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Email</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="your@email.com"
-              placeholderTextColor="#9CA3AF"
               value={email}
               onChangeText={setEmail}
+              placeholder="your@email.com"
+              placeholderTextColor="#6B7280"
               autoCapitalize="none"
-              autoCorrect={false}
               keyboardType="email-address"
+              autoComplete="email"
+              textContentType="emailAddress"
             />
           </View>
 
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>Password</Text>
+            <Text style={styles.label}>Password<Text style={styles.required}>*</Text></Text>
             <TextInput
               style={styles.input}
-              placeholder="••••••••"
-              placeholderTextColor="#9CA3AF"
               value={password}
               onChangeText={setPassword}
+              placeholder="Enter password"
+              placeholderTextColor="#6B7280"
               secureTextEntry
+              autoComplete="password"
+              textContentType="password"
             />
           </View>
 
           <TouchableOpacity
-            style={[styles.loginButton, loading && styles.loginButtonDisabled]}
+            style={[styles.button, loading && styles.buttonDisabled]}
             onPress={handleLogin}
             disabled={loading}
           >
             {loading ? (
               <ActivityIndicator color="#FFFFFF" />
             ) : (
-              <Text style={styles.loginButtonText}>Log In</Text>
+              <Text style={styles.buttonText}>Log In</Text>
             )}
           </TouchableOpacity>
 
-          <View style={styles.signupPrompt}>
-            <Text style={styles.signupText}>Don't have an account? </Text>
-            <TouchableOpacity onPress={() => navigation.navigate('Signup')}>
-              <Text style={styles.signupLink}>Sign Up</Text>
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity
+            style={styles.linkButton}
+            onPress={() => navigation.navigate('Signup')}
+          >
+            <Text style={styles.linkText}>
+              Don't have an account? <Text style={styles.linkTextBold}>Sign Up</Text>
+            </Text>
+          </TouchableOpacity>
         </View>
       </ScrollView>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  outerContainer: {
     flex: 1,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: '#111827',
+    ...Platform.select({
+      web: {
+        minHeight: '100vh',
+      },
+    }),
   },
-  scrollContent: {
+  container: {
     flexGrow: 1,
+    backgroundColor: '#111827',
     justifyContent: 'center',
     padding: 16,
     alignItems: 'center',
+    minHeight: Platform.OS === 'web' ? '100vh' : undefined,
   },
-  formContainer: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
+  card: {
+    backgroundColor: '#020617',
+    borderRadius: 16,
     padding: 24,
+    borderWidth: 1,
+    borderColor: '#1F2937',
     width: '100%',
-    maxWidth: 400, // Max 400px width (4 inches at ~96 DPI)
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 5,
+    maxWidth: 400,
   },
   title: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: 'bold',
-    color: '#667eea',
+    color: '#FFFFFF',
     marginBottom: 8,
   },
   subtitle: {
-    fontSize: 14,
-    color: '#6B7280',
+    fontSize: 16,
+    color: '#9CA3AF',
     marginBottom: 24,
   },
   inputGroup: {
@@ -152,46 +145,48 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: 14,
-    fontWeight: '500',
-    color: '#374151',
+    color: '#D1D5DB',
     marginBottom: 6,
+    fontWeight: '500',
+  },
+  required: {
+    color: '#DC2626',
+    fontSize: 14,
   },
   input: {
-    backgroundColor: '#FFFFFF',
-    borderWidth: 2,
-    borderColor: '#E5E7EB',
-    borderRadius: 6,
+    backgroundColor: '#030712',
+    borderWidth: 1,
+    borderColor: '#374151',
+    borderRadius: 8,
     padding: 12,
-    fontSize: 14,
-    color: '#1F2937',
+    fontSize: 16,
+    color: '#FFFFFF',
   },
-  loginButton: {
-    backgroundColor: '#667eea',
-    borderRadius: 6,
-    padding: 14,
+  button: {
+    backgroundColor: '#2563EB',
+    borderRadius: 999,
+    padding: 16,
     alignItems: 'center',
     marginTop: 8,
   },
-  loginButtonDisabled: {
-    opacity: 0.7,
+  buttonDisabled: {
+    opacity: 0.6,
   },
-  loginButtonText: {
+  buttonText: {
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
   },
-  signupPrompt: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    marginTop: 20,
+  linkButton: {
+    marginTop: 16,
+    alignItems: 'center',
   },
-  signupText: {
-    color: '#6B7280',
+  linkText: {
+    color: '#9CA3AF',
     fontSize: 14,
   },
-  signupLink: {
-    color: '#667eea',
-    fontSize: 14,
-    fontWeight: '500',
+  linkTextBold: {
+    color: '#2563EB',
+    fontWeight: '600',
   },
 });

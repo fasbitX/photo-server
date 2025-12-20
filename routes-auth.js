@@ -243,7 +243,7 @@ function registerAuthRoutes(app) {
 }
 
 /* ──────────────────────────────────────────────
- *  HTML TEMPLATES
+ *  HTML TEMPLATES - DARK THEME
  * ────────────────────────────────────────────── */
 
 function getBaseStyles() {
@@ -252,37 +252,39 @@ function getBaseStyles() {
       * { margin: 0; padding: 0; box-sizing: border-box; }
       body {
         font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: #333;
+        background: #111827;
+        color: #FFFFFF;
         min-height: 100vh;
         display: flex;
         align-items: center;
         justify-content: center;
-        padding: 10px;
+        padding: 16px;
       }
       .container {
-        background: white;
+        background: #020617;
         padding: 24px;
-        border-radius: 12px;
-        box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        border-radius: 16px;
+        border: 1px solid #1F2937;
         width: 100%;
         max-width: 400px;
       }
       h1 { 
-        margin-bottom: 8px; 
-        font-size: 24px; 
-        color: #667eea;
+        font-size: 28px;
+        font-weight: bold;
+        color: #FFFFFF;
+        margin-bottom: 8px;
       }
       h2 { 
-        margin-bottom: 20px; 
-        font-size: 16px; 
-        color: #666;
+        font-size: 16px;
+        color: #9CA3AF;
+        margin-bottom: 24px;
         font-weight: normal;
       }
       p { 
         margin-bottom: 15px; 
         line-height: 1.6;
         font-size: 14px;
+        color: #D1D5DB;
       }
       .form-group { 
         margin-bottom: 16px; 
@@ -291,67 +293,62 @@ function getBaseStyles() {
         display: block; 
         margin-bottom: 6px; 
         font-weight: 500; 
-        color: #555;
+        color: #D1D5DB;
         font-size: 14px;
       }
       input, select {
         width: 100%;
         padding: 12px;
-        border: 2px solid #e0e0e0;
-        border-radius: 6px;
-        font-size: 14px;
-        transition: border 0.3s;
-        background: white;
-        color: #333;
+        border: 1px solid #374151;
+        border-radius: 8px;
+        font-size: 16px;
+        background: #030712;
+        color: #FFFFFF;
       }
-      /* Fix for select dropdowns - ensure black text on white background */
       select {
-        background-color: white;
-        color: #333;
         -webkit-appearance: none;
         -moz-appearance: none;
         appearance: none;
-        background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+        background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239CA3AF' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
         background-repeat: no-repeat;
         background-position: right 8px center;
         background-size: 20px;
         padding-right: 40px;
       }
       select option {
-        background: white;
-        color: #333;
+        background: #030712;
+        color: #FFFFFF;
       }
       input:focus, select:focus {
         outline: none;
-        border-color: #667eea;
+        border-color: #2563EB;
+      }
+      input::placeholder {
+        color: #6B7280;
       }
       button {
         width: 100%;
-        padding: 14px;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 16px;
+        background: #2563EB;
         color: white;
         border: none;
-        border-radius: 6px;
+        border-radius: 999px;
         font-size: 16px;
         font-weight: 600;
         cursor: pointer;
-        transition: transform 0.2s, box-shadow 0.2s;
+        margin-top: 8px;
       }
       button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
-      }
-      button:active {
-        transform: translateY(0);
+        background: #1D4ED8;
       }
       .link {
         text-align: center;
         margin-top: 16px;
-        color: #666;
+        color: #9CA3AF;
         font-size: 14px;
       }
       .link a {
-        color: #667eea;
+        color: #2563EB;
         text-decoration: none;
         font-weight: 500;
       }
@@ -359,22 +356,22 @@ function getBaseStyles() {
         text-decoration: underline;
       }
       .error {
-        background: #fee;
-        color: #c33;
+        background: #7F1D1D;
+        color: #FCA5A5;
         padding: 12px;
-        border-radius: 6px;
+        border-radius: 8px;
         margin-bottom: 16px;
-        border-left: 4px solid #c33;
+        border-left: 4px solid #DC2626;
         font-size: 14px;
         line-height: 1.4;
       }
       .success {
-        background: #efe;
-        color: #2a7;
+        background: #14532D;
+        color: #86EFAC;
         padding: 12px;
-        border-radius: 6px;
+        border-radius: 8px;
         margin-bottom: 16px;
-        border-left: 4px solid #2a7;
+        border-left: 4px solid #22C55E;
         font-size: 14px;
         line-height: 1.4;
       }
@@ -386,14 +383,13 @@ function getBaseStyles() {
         flex: 1;
       }
       
-      /* Mobile optimization for very small screens */
       @media (max-width: 400px) {
         .container {
           padding: 20px 16px;
           max-width: 100%;
         }
         h1 {
-          font-size: 22px;
+          font-size: 24px;
         }
         h2 {
           font-size: 14px;
@@ -401,9 +397,6 @@ function getBaseStyles() {
         .row {
           flex-direction: column;
           gap: 0;
-        }
-        input, select, button {
-          font-size: 16px; /* Prevents zoom on iOS */
         }
       }
     </style>
@@ -445,8 +438,8 @@ function renderLoginPage(error = '') {
 </head>
 <body>
   <div class="container">
-    <h1>Log In</h1>
-    <h2>Welcome back</h2>
+    <h1>Welcome Back</h1>
+    <h2>Sign in to continue</h2>
     ${error ? `<div class="error">${error}</div>` : ''}
     <form method="POST" action="/login">
       <div class="form-group">
@@ -617,8 +610,8 @@ function renderVerificationPending(email, verifyUrl = null, errorMsg = null) {
     <p>We've sent a verification link to <strong>${email}</strong></p>
     <p>Please check your inbox and click the link to verify your account.</p>
     ${verifyUrl ? `
-    <p style="margin-top: 20px; font-size: 14px; color: #999;">
-      For testing: <a href="${verifyUrl}">Click here to verify</a>
+    <p style="margin-top: 20px; font-size: 14px; color: #6B7280;">
+      For testing: <a href="${verifyUrl}" style="color: #2563EB;">Click here to verify</a>
     </p>
     ` : ''}
     <div class="link">

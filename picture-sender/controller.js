@@ -4,7 +4,8 @@ import * as Crypto from 'expo-crypto';
 import NetInfo from '@react-native-community/netinfo';
 import nacl from 'tweetnacl';
 import * as util from 'tweetnacl-util';
-import * as FileSystemLegacy from 'expo-file-system/legacy';
+import * as FileSystem from 'expo-file-system';
+const FileSystemLegacy = FileSystem;
 
 import { processImageForUpload } from './admin';
 
@@ -559,10 +560,10 @@ async function readFileForChunks(processed, logInfo, logError) {
       uri,
     });
 
-    const info = await FileSystemLegacy.getInfoAsync(uri, { size: true });
+    const info = await FileSystem.getInfoAsync(uri, { size: true });
     const fileSize = info.size || 0;
-    const base64Data = await FileSystemLegacy.readAsStringAsync(uri, {
-      encoding: FileSystemLegacy.EncodingType.Base64,
+    const base64Data = await FileSystem.readAsStringAsync(uri, {
+      encoding: FileSystem.EncodingType.Base64,
     });
 
     logInfo('Read file for chunked upload (legacy fallback)', {

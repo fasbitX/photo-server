@@ -18,13 +18,7 @@ import {
   AdminModal,
 } from './admin';
 import { uploadPhotosWithController } from './controller';
-
-// must match CLIENTS['client-1'] in server.js
-const CLIENT_ID = 'client-1';
-
-// the SECRET KEY from genKeys.js (keep this private!)
-const SECRET_KEY_BASE64 =
-  'smfgQAnsJMwB91GgJDh1jaGupVeuisYREtz8HAHIvv/r4kG87MVWquYRYo+gx/BxM08b1eDhVEttXaqJBPmDKw==';
+import { CLIENT_ID, SECRET_KEY_BASE64 } from './config';
 
 function MainScreen() {
   const [images, setImages] = useState([]);

@@ -19,6 +19,10 @@ import {
   Platform,
 } from 'react-native';
 import * as ImageManipulator from 'expo-image-manipulator';
+import NetInfo from '@react-native-community/netinfo';
+import nacl from 'tweetnacl';
+import * as util from 'tweetnacl-util';
+import { CLIENT_ID, SECRET_KEY_BASE64 } from './config';
 
 const defaultSettings = {
   serverHost: '134.122.25.62',
@@ -26,7 +30,6 @@ const defaultSettings = {
   defaultFormat: 'jpg', // 'jpg' or 'png'
   maxMegapixels: 4,     // 4 MP default
   networkPreference: 'any', // 'any' | 'wifi' | 'cellular'
-  // Uploads now always use chunked mode with automatic tuning based on network.
 };
 
 function sanitizeDetails(details) {
@@ -141,6 +144,16 @@ export function AdminProvider({ children }) {
 
   const sendLogsToServer = async () => {
     try {
+      // Check network connectivity first
+      const netState = await NetInfo.fetch();
+      if (!netState.isConnected) {
+        Alert.alert(
+          'No Network',
+          'You are not connected to the internet. Please connect and try again.'
+        );
+        return;
+      }
+
       if (!serverUrl) {
         Alert.alert(
           'Server not configured',
@@ -160,46 +173,100 @@ export function AdminProvider({ children }) {
         details: sanitizeDetails(entry.details),
       }));
 
-      const url = `${serverUrl.replace(/\/+$/, '')}/admin/send-logs`;
+      const url = `${serverUrl.replace(/\/+$/, '')}/send-logs`;
 
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ logEntries: sanitized }),
-      });
+      // Create cryptographic signature for authentication
+      const timestamp = Date.now().toString();
+      const message = 'send-logs';
+      const fullMessage = `${timestamp}:${message}`;
+      
+      const secretKey = util.decodeBase64(SECRET_KEY_BASE64);
+      const messageBytes = util.decodeUTF8(fullMessage);
+      const signature = nacl.sign.detached(messageBytes, secretKey);
+      const signatureBase64 = util.encodeBase64(signature);
 
-      const resText = await response.text();
-      let json = null;
+      console.log('Sending authenticated logs to:', url);
+      console.log('Log count:', sanitized.length);
+
+      // Add timeout to fetch
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+
       try {
-        json = resText ? JSON.parse(resText) : null;
-      } catch {
-        json = null;
-      }
-
-      if (!response.ok) {
-        console.error('Failed to send logs', {
-          status: response.status,
-          response: resText,
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            clientId: CLIENT_ID,
+            timestamp,
+            signatureBase64,
+            logEntries: sanitized,
+          }),
+          signal: controller.signal,
         });
-        Alert.alert(
-          'Error sending logs',
-          `Server returned ${response.status}. Please check server logs.`
-        );
-        return;
-      }
 
-      Alert.alert(
-        'Logs sent!',
-        'Error logs have been emailed to the admin.'
-      );
+        clearTimeout(timeoutId);
+
+        const resText = await response.text();
+        console.log('Server response status:', response.status);
+        console.log('Server response text:', resText.substring(0, 200));
+
+        let json = null;
+        try {
+          json = resText ? JSON.parse(resText) : null;
+        } catch (parseErr) {
+          console.error('Failed to parse response JSON:', parseErr);
+          json = null;
+        }
+
+        if (!response.ok) {
+          console.error('Failed to send logs', {
+            status: response.status,
+            response: resText,
+          });
+          Alert.alert(
+            'Error sending logs',
+            `Server returned ${response.status}. ${json?.error || 'Please check server logs.'}`
+          );
+          return;
+        }
+
+        Alert.alert(
+          'Logs sent!',
+          'Error logs have been emailed to the admin.'
+        );
+      } catch (fetchErr) {
+        clearTimeout(timeoutId);
+        
+        if (fetchErr.name === 'AbortError') {
+          console.error('Request timed out after 30 seconds');
+          Alert.alert(
+            'Request Timeout',
+            'The request took too long. Please check your connection and server status.'
+          );
+        } else {
+          throw fetchErr; // Re-throw to outer catch
+        }
+      }
     } catch (err) {
       console.error('Failed to send logs to server', err);
-      Alert.alert(
-        'Error sending logs',
-        `Could not send logs:\n${err && err.message ? err.message : String(err)}`
-      );
+      
+      let errorMsg = 'Could not send logs:\n';
+      
+      if (err && err.message) {
+        errorMsg += err.message;
+      } else {
+        errorMsg += String(err);
+      }
+      
+      // Add helpful context based on error
+      if (String(err).includes('Network request failed')) {
+        errorMsg += '\n\nThis usually means:\n• Server is not reachable\n• Wrong host/port in settings\n• Server is not running';
+      }
+      
+      Alert.alert('Error sending logs', errorMsg);
     }
   };
 
@@ -289,7 +356,6 @@ export function AdminModal({ visible, onClose }) {
         localNetwork === 'wifi' || localNetwork === 'cellular'
           ? localNetwork
           : 'any',
-      // No chunk settings: controller always uses auto-tuned chunked uploads.
     });
 
     onClose && onClose();

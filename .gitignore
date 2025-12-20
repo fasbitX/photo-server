@@ -1,1 +1,24 @@
+# dependencies
+node_modules/
+
+# Expo / React Native
 .expo/
+.expo-shared/
+*.log
+
+# builds / outputs
+dist/
+build/
+web-build/
+
+# OS/editor junk
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# env / secrets
+.env
+.env.*
+*.pem
+*.key

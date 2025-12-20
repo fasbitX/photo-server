@@ -23,7 +23,6 @@
       "package": "com.brian.vt.picturesender"
     },
     "web": {
-      "output": "static",
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
@@ -38,19 +37,8 @@
             "backgroundColor": "#000000"
           }
         }
-      ],
-      [
-        "expo-build-properties",
-        {
-          "android": {
-            "usesCleartextTraffic": true
-          }
-        }
       ]
     ],
-    "experiments": {
-      "reactCompiler": true
-    },
     "extra": {
       "eas": {
         "projectId": "59e4ffce-4875-463e-9772-d53a45c8aef2"

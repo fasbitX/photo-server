@@ -6,6 +6,7 @@ const crypto = require('crypto');
 const nacl = require('tweetnacl');
 const util = require('tweetnacl-util');
 const sharp = require('sharp');
+const nodemailer = require('nodemailer');
 
 const uploadDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadDir)) {
@@ -381,6 +382,79 @@ function registerUploadRoutes(app) {
       return res.status(500).json({ error: 'Internal server error' });
     }
   });
+
+  // Mobile app log endpoint - emails logs to admin
+  app.post('/send-logs', express.json(), async (req, res) => {
+    try {
+      const { logEntries } = req.body;
+
+      if (!logEntries || !Array.isArray(logEntries)) {
+        return res.status(400).json({ error: 'Invalid log entries' });
+      }
+
+      console.log('Received log entries from mobile app:', logEntries.length);
+
+      // Email configuration from .env
+      const SMTP_HOST = process.env.SMTP_HOST || '';
+      const SMTP_PORT = parseInt(process.env.SMTP_PORT || '587', 10);
+      const SMTP_USER = process.env.SMTP_USER || '';
+      const SMTP_PASS = process.env.SMTP_PASS || '';
+      const ADMIN_EMAIL = process.env.ADMIN_EMAIL || '';
+
+      if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS || !ADMIN_EMAIL) {
+        console.error('SMTP settings not configured');
+        return res.status(500).json({ error: 'Server email not configured' });
+      }
+
+      const transporter = nodemailer.createTransport({
+        host: SMTP_HOST,
+        port: SMTP_PORT,
+        secure: SMTP_PORT === 465,
+        auth: {
+          user: SMTP_USER,
+          pass: SMTP_PASS,
+        },
+      });
+
+      const timestamp = new Date().toISOString();
+      const subject = `Photo Sender Error Logs - ${timestamp}`;
+      const logJson = JSON.stringify(logEntries, null, 2);
+      
+      const textBody = `Error logs from Photo Sender mobile app.
+
+Total entries: ${logEntries.length}
+Timestamp: ${timestamp}
+
+See attached JSON file for full logs.`;
+
+      const mailOptions = {
+        from: SMTP_USER,
+        to: ADMIN_EMAIL,
+        subject,
+        text: textBody,
+        attachments: [
+          {
+            filename: `photo-sender-logs-${Date.now()}.json`,
+            content: logJson,
+            contentType: 'application/json',
+          },
+        ],
+      };
+
+      await transporter.sendMail(mailOptions);
+
+      console.log('Mobile app logs emailed successfully to:', ADMIN_EMAIL);
+      return res.json({ ok: true, message: 'Logs emailed successfully' });
+      
+    } catch (err) {
+      console.error('Failed to email mobile logs:', err);
+      return res.status(500).json({ 
+        error: 'Failed to send email', 
+        details: err.message 
+      });
+    }
+  });
+
 }
 
 module.exports = { registerUploadRoutes };

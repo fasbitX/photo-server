@@ -22,15 +22,7 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import NetInfo from '@react-native-community/netinfo';
 import nacl from 'tweetnacl';
 import * as util from 'tweetnacl-util';
-import { CLIENT_ID, SECRET_KEY_BASE64 } from './config';
-
-const defaultSettings = {
-  serverHost: '134.122.25.62',
-  serverPort: '4000',
-  defaultFormat: 'jpg', // 'jpg' or 'png'
-  maxMegapixels: 4,     // 4 MP default
-  networkPreference: 'any', // 'any' | 'wifi' | 'cellular'
-};
+import { CLIENT_ID, SECRET_KEY_BASE64, DEFAULT_SETTINGS } from './config';
 
 function sanitizeDetails(details) {
   if (details == null) return null;
@@ -77,7 +69,7 @@ export async function processImageForUpload(asset, settings) {
       ? ImageManipulator.SaveFormat.PNG
       : ImageManipulator.SaveFormat.JPEG;
 
-  const targetMp = settings.maxMegapixels || defaultSettings.maxMegapixels;
+  const targetMp = settings.maxMegapixels || DEFAULT_SETTINGS.maxMegapixels;
   const maxPixels = targetMp * 1_000_000;
 
   let { width, height } = asset;
@@ -112,7 +104,7 @@ export async function processImageForUpload(asset, settings) {
 }
 
 export function AdminProvider({ children }) {
-  const [settings, setSettings] = useState(defaultSettings);
+  const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [logEntries, setLogEntries] = useState([]);
   const [gallery, setGallery] = useState([]);
 
@@ -121,8 +113,16 @@ export function AdminProvider({ children }) {
     const host = settings.serverHost.trim();
     const port = settings.serverPort.trim();
     if (!host || !port) return null;
-    return `http://${host}:${port}`;
-  }, [settings.serverHost, settings.serverPort]);
+    
+    const protocol = settings.useHttps ? 'https' : 'http';
+    
+    // For standard ports (80/443), don't include port in URL
+    if ((protocol === 'https' && port === '443') || (protocol === 'http' && port === '80')) {
+      return `${protocol}://${host}`;
+    }
+    
+    return `${protocol}://${host}:${port}`;
+  }, [settings.serverHost, settings.serverPort, settings.useHttps]);
 
   const log = (level, message, details) => {
     setLogEntries(prev => {
@@ -326,6 +326,7 @@ export function AdminModal({ visible, onClose }) {
 
   const [localHost, setLocalHost] = useState(settings.serverHost);
   const [localPort, setLocalPort] = useState(settings.serverPort);
+  const [localHttps, setLocalHttps] = useState(settings.useHttps ?? true);
   const [localFormat, setLocalFormat] = useState(settings.defaultFormat);
   const [localMaxMP, setLocalMaxMP] = useState(String(settings.maxMegapixels));
   const [localNetwork, setLocalNetwork] = useState(settings.networkPreference);
@@ -334,6 +335,7 @@ export function AdminModal({ visible, onClose }) {
     if (visible) {
       setLocalHost(settings.serverHost);
       setLocalPort(settings.serverPort);
+      setLocalHttps(settings.useHttps ?? true);
       setLocalFormat(settings.defaultFormat);
       setLocalMaxMP(String(settings.maxMegapixels));
       setLocalNetwork(settings.networkPreference);
@@ -350,6 +352,7 @@ export function AdminModal({ visible, onClose }) {
     updateSettings({
       serverHost: localHost.trim(),
       serverPort: localPort.trim(),
+      useHttps: localHttps,
       defaultFormat: localFormat === 'png' ? 'png' : 'jpg',
       maxMegapixels: maxMPNum,
       networkPreference:
@@ -392,9 +395,28 @@ export function AdminModal({ visible, onClose }) {
               value={localPort}
               onChangeText={setLocalPort}
               keyboardType="numeric"
-              placeholder="4000"
+              placeholder="443"
               placeholderTextColor="#6B7280"
             />
+
+            <Text style={styles.label}>Use HTTPS</Text>
+            <View style={styles.row}>
+              <ToggleButton
+                label="HTTP"
+                active={!localHttps}
+                onPress={() => setLocalHttps(false)}
+              />
+              <View style={{ width: 8 }} />
+              <ToggleButton
+                label="HTTPS"
+                active={localHttps}
+                onPress={() => setLocalHttps(true)}
+              />
+            </View>
+            <Text style={styles.help}>
+              Use HTTPS for secure connections (recommended with Cloudflare).
+              Port 443 for HTTPS, port 80 or 4000 for HTTP.
+            </Text>
 
             {/* Image processing */}
             <Text style={styles.sectionTitle}>Image Processing</Text>

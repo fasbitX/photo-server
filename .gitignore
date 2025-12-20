@@ -22,3 +22,6 @@ Thumbs.db
 .env.*
 *.pem
 *.key
+
+#tools
+deploy-server.sh

@@ -33,4 +33,3 @@ logs/*.log
 # runtime / app data
 uploads/
 users.db
-picture-sender/SignupScreen.js

@@ -1,5 +1,5 @@
 // SignupScreen.js
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -27,11 +27,27 @@ export default function SignupScreen({ navigation }) {
     phone: '',
     email: '',
     gender: '',
-    dateOfBirth: '',
+    dobMonth: '',
+    dobDay: '',
+    dobYear: '',
     password: '',
     confirmPassword: '',
   });
   const [loading, setLoading] = useState(false);
+
+  // Refs for tab navigation (web only)
+  const firstNameRef = useRef(null);
+  const lastNameRef = useRef(null);
+  const streetAddressRef = useRef(null);
+  const cityRef = useRef(null);
+  const zipRef = useRef(null);
+  const phoneRef = useRef(null);
+  const emailRef = useRef(null);
+  const dobMonthRef = useRef(null);
+  const dobDayRef = useRef(null);
+  const dobYearRef = useRef(null);
+  const passwordRef = useRef(null);
+  const confirmPasswordRef = useRef(null);
 
   // Build server URL from config
   const serverUrl = USE_HTTPS
@@ -54,7 +70,9 @@ export default function SignupScreen({ navigation }) {
       'phone',
       'email',
       'gender',
-      'dateOfBirth',
+      'dobMonth',
+      'dobDay',
+      'dobYear',
       'password',
       'confirmPassword',
     ];
@@ -75,15 +93,47 @@ export default function SignupScreen({ navigation }) {
       return;
     }
 
-    // Validate date of birth format (MM/DD/YYYY)
-    const dobRegex = /^(0[1-9]|1[0-2])\/(0[1-9]|[12]\d|3[01])\/\d{4}$/;
-    if (!dobRegex.test(formData.dateOfBirth)) {
-      Alert.alert('Error', 'Date of Birth must be in MM/DD/YYYY format');
+    // Validate individual date components
+    const month = parseInt(formData.dobMonth, 10);
+    const day = parseInt(formData.dobDay, 10);
+    const year = parseInt(formData.dobYear, 10);
+
+    if (isNaN(month) || month < 1 || month > 12) {
+      Alert.alert('Error', 'Month must be between 1 and 12');
+      return;
+    }
+
+    if (isNaN(day) || day < 1 || day > 31) {
+      Alert.alert('Error', 'Day must be between 1 and 31');
+      return;
+    }
+
+    const currentYear = new Date().getFullYear();
+    if (isNaN(year) || year < 1900 || year > currentYear) {
+      Alert.alert('Error', `Year must be between 1900 and ${currentYear}`);
+      return;
+    }
+
+    // Format as MM/DD/YYYY with zero-padding
+    const dateOfBirth = `${String(month).padStart(2, '0')}/${String(day).padStart(2, '0')}/${year}`;
+
+    // Validate the constructed date is valid
+    const testDate = new Date(year, month - 1, day);
+    if (
+      testDate.getFullYear() !== year ||
+      testDate.getMonth() !== month - 1 ||
+      testDate.getDate() !== day
+    ) {
+      Alert.alert('Error', 'Invalid date - please check month and day');
       return;
     }
 
     setLoading(true);
-    const result = await signup(formData, serverUrl);
+    const signupData = {
+      ...formData,
+      dateOfBirth,
+    };
+    const result = await signup(signupData, serverUrl);
     setLoading(false);
 
     if (result.success) {
@@ -109,6 +159,7 @@ export default function SignupScreen({ navigation }) {
               First Name<Text style={styles.required}>*</Text>
             </Text>
             <TextInput
+              ref={firstNameRef}
               style={styles.input}
               value={formData.firstName}
               onChangeText={val => updateField('firstName', val)}
@@ -116,6 +167,8 @@ export default function SignupScreen({ navigation }) {
               placeholderTextColor="#6B7280"
               textContentType="givenName"
               autoComplete="name-given"
+              onSubmitEditing={() => lastNameRef.current?.focus()}
+              blurOnSubmit={false}
             />
           </View>
 
@@ -124,6 +177,7 @@ export default function SignupScreen({ navigation }) {
               Last Name<Text style={styles.required}>*</Text>
             </Text>
             <TextInput
+              ref={lastNameRef}
               style={styles.input}
               value={formData.lastName}
               onChangeText={val => updateField('lastName', val)}
@@ -131,6 +185,8 @@ export default function SignupScreen({ navigation }) {
               placeholderTextColor="#6B7280"
               textContentType="familyName"
               autoComplete="name-family"
+              onSubmitEditing={() => streetAddressRef.current?.focus()}
+              blurOnSubmit={false}
             />
           </View>
         </View>
@@ -140,6 +196,7 @@ export default function SignupScreen({ navigation }) {
             Street Address<Text style={styles.required}>*</Text>
           </Text>
           <TextInput
+            ref={streetAddressRef}
             style={styles.input}
             value={formData.streetAddress}
             onChangeText={val => updateField('streetAddress', val)}
@@ -147,6 +204,8 @@ export default function SignupScreen({ navigation }) {
             placeholderTextColor="#6B7280"
             textContentType="streetAddressLine1"
             autoComplete="street-address"
+            onSubmitEditing={() => cityRef.current?.focus()}
+            blurOnSubmit={false}
           />
         </View>
 
@@ -156,6 +215,7 @@ export default function SignupScreen({ navigation }) {
               City<Text style={styles.required}>*</Text>
             </Text>
             <TextInput
+              ref={cityRef}
               style={styles.input}
               value={formData.city}
               onChangeText={val => updateField('city', val)}
@@ -163,6 +223,8 @@ export default function SignupScreen({ navigation }) {
               placeholderTextColor="#6B7280"
               textContentType="addressCity"
               autoComplete="postal-address-locality"
+              onSubmitEditing={() => zipRef.current?.focus()}
+              blurOnSubmit={false}
             />
           </View>
 
@@ -191,6 +253,7 @@ export default function SignupScreen({ navigation }) {
               ZIP<Text style={styles.required}>*</Text>
             </Text>
             <TextInput
+              ref={zipRef}
               style={styles.input}
               value={formData.zip}
               onChangeText={val => updateField('zip', val)}
@@ -200,6 +263,8 @@ export default function SignupScreen({ navigation }) {
               maxLength={5}
               textContentType="postalCode"
               autoComplete="postal-code"
+              onSubmitEditing={() => phoneRef.current?.focus()}
+              blurOnSubmit={false}
             />
           </View>
         </View>
@@ -209,6 +274,7 @@ export default function SignupScreen({ navigation }) {
             Phone<Text style={styles.required}>*</Text>
           </Text>
           <TextInput
+            ref={phoneRef}
             style={styles.input}
             value={formData.phone}
             onChangeText={val => updateField('phone', val)}
@@ -217,6 +283,8 @@ export default function SignupScreen({ navigation }) {
             keyboardType="phone-pad"
             textContentType="telephoneNumber"
             autoComplete="tel"
+            onSubmitEditing={() => emailRef.current?.focus()}
+            blurOnSubmit={false}
           />
         </View>
 
@@ -225,6 +293,7 @@ export default function SignupScreen({ navigation }) {
             Email<Text style={styles.required}>*</Text>
           </Text>
           <TextInput
+            ref={emailRef}
             style={styles.input}
             value={formData.email}
             onChangeText={val => updateField('email', val)}
@@ -234,43 +303,111 @@ export default function SignupScreen({ navigation }) {
             keyboardType="email-address"
             textContentType="emailAddress"
             autoComplete="email"
+            onSubmitEditing={() => dobMonthRef.current?.focus()}
+            blurOnSubmit={false}
           />
         </View>
 
-        <View style={styles.row}>
-          <View style={[styles.inputGroup, styles.half]}>
-            <Text style={styles.label}>
-              Gender<Text style={styles.required}>*</Text>
-            </Text>
-            <View style={styles.pickerContainer}>
-              <Picker
-                selectedValue={formData.gender}
-                onValueChange={val => updateField('gender', val)}
-                style={styles.picker}
-                dropdownIconColor="#9CA3AF"
-              >
-                <Picker.Item label="Select..." value="" />
-                <Picker.Item label="Male" value="male" />
-                <Picker.Item label="Female" value="female" />
-                <Picker.Item label="Other" value="other" />
-                <Picker.Item label="Prefer not to say" value="prefer_not_to_say" />
-              </Picker>
-            </View>
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>
+            Gender<Text style={styles.required}>*</Text>
+          </Text>
+          <View style={styles.pickerContainer}>
+            <Picker
+              selectedValue={formData.gender}
+              onValueChange={val => updateField('gender', val)}
+              style={styles.picker}
+              dropdownIconColor="#9CA3AF"
+              itemStyle={styles.pickerItem}
+            >
+              <Picker.Item label="Select..." value="" />
+              <Picker.Item label="Male" value="male" />
+              <Picker.Item label="Female" value="female" />
+              <Picker.Item label="Other" value="other" />
+              <Picker.Item label="Prefer not to say" value="prefer_not_to_say" />
+            </Picker>
           </View>
+        </View>
 
-          <View style={[styles.inputGroup, styles.half]}>
-            <Text style={styles.label}>
-              Date of Birth<Text style={styles.required}>*</Text>
-            </Text>
-            <TextInput
-              style={styles.input}
-              value={formData.dateOfBirth}
-              onChangeText={val => updateField('dateOfBirth', val)}
-              placeholder="MM/DD/YYYY"
-              placeholderTextColor="#6B7280"
-              keyboardType="numeric"
-              maxLength={10}
-            />
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>
+            Date of Birth<Text style={styles.required}>*</Text>
+          </Text>
+          <View style={styles.row}>
+            <View style={[styles.dateInputWrapper, styles.third]}>
+              <TextInput
+                ref={dobMonthRef}
+                style={styles.input}
+                value={formData.dobMonth}
+                onChangeText={val => {
+                  // Only allow 1-2 digits
+                  if (val === '' || /^\d{1,2}$/.test(val)) {
+                    updateField('dobMonth', val);
+                    // Auto-advance to next field when 2 digits entered
+                    if (val.length === 2) {
+                      dobDayRef.current?.focus();
+                    }
+                  }
+                }}
+                placeholder="MM"
+                placeholderTextColor="#6B7280"
+                keyboardType="numeric"
+                maxLength={2}
+                onSubmitEditing={() => dobDayRef.current?.focus()}
+                blurOnSubmit={false}
+              />
+              <Text style={styles.dateLabel}>Month</Text>
+            </View>
+
+            <View style={[styles.dateInputWrapper, styles.third]}>
+              <TextInput
+                ref={dobDayRef}
+                style={styles.input}
+                value={formData.dobDay}
+                onChangeText={val => {
+                  // Only allow 1-2 digits
+                  if (val === '' || /^\d{1,2}$/.test(val)) {
+                    updateField('dobDay', val);
+                    // Auto-advance to next field when 2 digits entered
+                    if (val.length === 2) {
+                      dobYearRef.current?.focus();
+                    }
+                  }
+                }}
+                placeholder="DD"
+                placeholderTextColor="#6B7280"
+                keyboardType="numeric"
+                maxLength={2}
+                onSubmitEditing={() => dobYearRef.current?.focus()}
+                blurOnSubmit={false}
+              />
+              <Text style={styles.dateLabel}>Day</Text>
+            </View>
+
+            <View style={[styles.dateInputWrapper, styles.third]}>
+              <TextInput
+                ref={dobYearRef}
+                style={styles.input}
+                value={formData.dobYear}
+                onChangeText={val => {
+                  // Only allow 4 digits
+                  if (val === '' || /^\d{1,4}$/.test(val)) {
+                    updateField('dobYear', val);
+                    // Auto-advance to next field when 4 digits entered
+                    if (val.length === 4) {
+                      passwordRef.current?.focus();
+                    }
+                  }
+                }}
+                placeholder="YYYY"
+                placeholderTextColor="#6B7280"
+                keyboardType="numeric"
+                maxLength={4}
+                onSubmitEditing={() => passwordRef.current?.focus()}
+                blurOnSubmit={false}
+              />
+              <Text style={styles.dateLabel}>Year</Text>
+            </View>
           </View>
         </View>
 
@@ -279,6 +416,7 @@ export default function SignupScreen({ navigation }) {
             Password (min 8 characters)<Text style={styles.required}>*</Text>
           </Text>
           <TextInput
+            ref={passwordRef}
             style={styles.input}
             value={formData.password}
             onChangeText={val => updateField('password', val)}
@@ -288,6 +426,8 @@ export default function SignupScreen({ navigation }) {
             textContentType="newPassword"
             autoComplete="password-new"
             passwordRules="minlength: 8;"
+            onSubmitEditing={() => confirmPasswordRef.current?.focus()}
+            blurOnSubmit={false}
           />
         </View>
 
@@ -296,6 +436,7 @@ export default function SignupScreen({ navigation }) {
             Confirm Password<Text style={styles.required}>*</Text>
           </Text>
           <TextInput
+            ref={confirmPasswordRef}
             style={styles.input}
             value={formData.confirmPassword}
             onChangeText={val => updateField('confirmPassword', val)}
@@ -304,6 +445,7 @@ export default function SignupScreen({ navigation }) {
             secureTextEntry
             textContentType="newPassword"
             autoComplete="password-new"
+            onSubmitEditing={handleSignup}
           />
         </View>
 
@@ -389,16 +531,36 @@ const styles = StyleSheet.create({
   third: {
     flex: 1,
   },
+  dateInputWrapper: {
+    flex: 1,
+  },
+  dateLabel: {
+    fontSize: 11,
+    color: '#6B7280',
+    marginTop: 4,
+    textAlign: 'center',
+  },
   pickerContainer: {
     backgroundColor: '#030712',
     borderWidth: 1,
     borderColor: '#374151',
     borderRadius: 8,
     overflow: 'hidden',
+    justifyContent: 'center',
   },
   picker: {
     color: '#FFFFFF',
     height: 48,
+    ...Platform.select({
+      web: {
+        paddingLeft: 8,
+        paddingRight: 8,
+      },
+      default: {},
+    }),
+  },
+  pickerItem: {
+    fontSize: 16,
   },
   button: {
     backgroundColor: '#2563EB',
@@ -428,5 +590,3 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
-
-// auth.js

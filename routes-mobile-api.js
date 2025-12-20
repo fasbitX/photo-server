@@ -5,7 +5,8 @@ const {
   verifyPassword,
   createUser,
   findUserById,
-} = require('./db-users');
+  createLoginSession,
+} = require('./database');
 const {
   sendVerificationEmail,
 } = require('./email-utils');
@@ -40,6 +41,17 @@ function registerMobileApiRoutes(app) {
         return res.status(403).json({ error: 'Please verify your email before logging in' });
       }
       
+      // Track login session
+      const deviceInfo = req.headers['user-agent'] || 'Unknown Device';
+      const ipAddress = req.ip || req.connection.remoteAddress;
+      
+      try {
+        await createLoginSession(user.id, deviceInfo, ipAddress);
+      } catch (sessionErr) {
+        console.error('Failed to create login session:', sessionErr);
+        // Continue with login even if session tracking fails
+      }
+      
       // Return user data (without password hash)
       const userData = {
         id: user.id,
@@ -49,7 +61,7 @@ function registerMobileApiRoutes(app) {
         email: user.email,
         phone: user.phone,
         status: user.status,
-        account_balance: user.account_balance,
+        account_balance: parseFloat(user.account_balance),
         email_verified: user.email_verified,
       };
       
@@ -140,7 +152,7 @@ function registerMobileApiRoutes(app) {
         email: user.email,
         phone: user.phone,
         status: user.status,
-        account_balance: user.account_balance,
+        account_balance: parseFloat(user.account_balance),
         email_verified: user.email_verified,
       };
       

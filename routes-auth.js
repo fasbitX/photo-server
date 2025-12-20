@@ -7,7 +7,7 @@ const {
   verifyUserEmail,
   createPasswordResetToken,
   resetPassword
-} = require('./db-users');
+} = require('./database');
 const {
   sendVerificationEmail,
   sendPasswordResetEmail
@@ -318,24 +318,21 @@ function getBaseStyles() {
         color: #c33;
         padding: 12px;
         border-radius: 6px;
-        margin-bottom: 20px;
-        border-left: 4px solid #c33;
+        margin-bottom: 16px;
+        font-size: 14px;
+        border: 1px solid #fcc;
       }
       .success {
         background: #efe;
-        color: #3a3;
+        color: #2a7;
         padding: 12px;
         border-radius: 6px;
-        margin-bottom: 20px;
-        border-left: 4px solid #3a3;
+        margin-bottom: 16px;
+        font-size: 14px;
+        border: 1px solid #cfc;
       }
-      .row {
-        display: flex;
-        gap: 15px;
-      }
-      .row .form-group {
-        flex: 1;
-      }
+      .row { display: flex; gap: 12px; }
+      .row .form-group { flex: 1; }
     </style>
   `;
 }
@@ -346,7 +343,7 @@ function renderHomePage() {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Welcome - Fasbit</title>
+  <title>Fasbit - Secure Photo Sharing</title>
   ${getBaseStyles()}
 </head>
 <body>
@@ -441,17 +438,56 @@ function renderSignupPage(error = '', formData = {}) {
           <select name="state" required>
             <option value="">Select...</option>
             <option value="VT" ${formData.state === 'VT' ? 'selected' : ''}>Vermont</option>
-            <option value="AL">Alabama</option>
-            <option value="AK">Alaska</option>
-            <option value="AZ">Arizona</option>
-            <option value="AR">Arkansas</option>
-            <option value="CA">California</option>
-            <option value="CO">Colorado</option>
-            <option value="CT">Connecticut</option>
-            <option value="DE">Delaware</option>
-            <option value="FL">Florida</option>
-            <option value="GA">Georgia</option>
-            <!-- Add remaining states -->
+            <option value="AL" ${formData.state === 'AL' ? 'selected' : ''}>Alabama</option>
+            <option value="AK" ${formData.state === 'AK' ? 'selected' : ''}>Alaska</option>
+            <option value="AZ" ${formData.state === 'AZ' ? 'selected' : ''}>Arizona</option>
+            <option value="AR" ${formData.state === 'AR' ? 'selected' : ''}>Arkansas</option>
+            <option value="CA" ${formData.state === 'CA' ? 'selected' : ''}>California</option>
+            <option value="CO" ${formData.state === 'CO' ? 'selected' : ''}>Colorado</option>
+            <option value="CT" ${formData.state === 'CT' ? 'selected' : ''}>Connecticut</option>
+            <option value="DE" ${formData.state === 'DE' ? 'selected' : ''}>Delaware</option>
+            <option value="FL" ${formData.state === 'FL' ? 'selected' : ''}>Florida</option>
+            <option value="GA" ${formData.state === 'GA' ? 'selected' : ''}>Georgia</option>
+            <option value="HI" ${formData.state === 'HI' ? 'selected' : ''}>Hawaii</option>
+            <option value="ID" ${formData.state === 'ID' ? 'selected' : ''}>Idaho</option>
+            <option value="IL" ${formData.state === 'IL' ? 'selected' : ''}>Illinois</option>
+            <option value="IN" ${formData.state === 'IN' ? 'selected' : ''}>Indiana</option>
+            <option value="IA" ${formData.state === 'IA' ? 'selected' : ''}>Iowa</option>
+            <option value="KS" ${formData.state === 'KS' ? 'selected' : ''}>Kansas</option>
+            <option value="KY" ${formData.state === 'KY' ? 'selected' : ''}>Kentucky</option>
+            <option value="LA" ${formData.state === 'LA' ? 'selected' : ''}>Louisiana</option>
+            <option value="ME" ${formData.state === 'ME' ? 'selected' : ''}>Maine</option>
+            <option value="MD" ${formData.state === 'MD' ? 'selected' : ''}>Maryland</option>
+            <option value="MA" ${formData.state === 'MA' ? 'selected' : ''}>Massachusetts</option>
+            <option value="MI" ${formData.state === 'MI' ? 'selected' : ''}>Michigan</option>
+            <option value="MN" ${formData.state === 'MN' ? 'selected' : ''}>Minnesota</option>
+            <option value="MS" ${formData.state === 'MS' ? 'selected' : ''}>Mississippi</option>
+            <option value="MO" ${formData.state === 'MO' ? 'selected' : ''}>Missouri</option>
+            <option value="MT" ${formData.state === 'MT' ? 'selected' : ''}>Montana</option>
+            <option value="NE" ${formData.state === 'NE' ? 'selected' : ''}>Nebraska</option>
+            <option value="NV" ${formData.state === 'NV' ? 'selected' : ''}>Nevada</option>
+            <option value="NH" ${formData.state === 'NH' ? 'selected' : ''}>New Hampshire</option>
+            <option value="NJ" ${formData.state === 'NJ' ? 'selected' : ''}>New Jersey</option>
+            <option value="NM" ${formData.state === 'NM' ? 'selected' : ''}>New Mexico</option>
+            <option value="NY" ${formData.state === 'NY' ? 'selected' : ''}>New York</option>
+            <option value="NC" ${formData.state === 'NC' ? 'selected' : ''}>North Carolina</option>
+            <option value="ND" ${formData.state === 'ND' ? 'selected' : ''}>North Dakota</option>
+            <option value="OH" ${formData.state === 'OH' ? 'selected' : ''}>Ohio</option>
+            <option value="OK" ${formData.state === 'OK' ? 'selected' : ''}>Oklahoma</option>
+            <option value="OR" ${formData.state === 'OR' ? 'selected' : ''}>Oregon</option>
+            <option value="PA" ${formData.state === 'PA' ? 'selected' : ''}>Pennsylvania</option>
+            <option value="RI" ${formData.state === 'RI' ? 'selected' : ''}>Rhode Island</option>
+            <option value="SC" ${formData.state === 'SC' ? 'selected' : ''}>South Carolina</option>
+            <option value="SD" ${formData.state === 'SD' ? 'selected' : ''}>South Dakota</option>
+            <option value="TN" ${formData.state === 'TN' ? 'selected' : ''}>Tennessee</option>
+            <option value="TX" ${formData.state === 'TX' ? 'selected' : ''}>Texas</option>
+            <option value="UT" ${formData.state === 'UT' ? 'selected' : ''}>Utah</option>
+            <option value="VT" ${formData.state === 'VT' ? 'selected' : ''}>Vermont</option>
+            <option value="VA" ${formData.state === 'VA' ? 'selected' : ''}>Virginia</option>
+            <option value="WA" ${formData.state === 'WA' ? 'selected' : ''}>Washington</option>
+            <option value="WV" ${formData.state === 'WV' ? 'selected' : ''}>West Virginia</option>
+            <option value="WI" ${formData.state === 'WI' ? 'selected' : ''}>Wisconsin</option>
+            <option value="WY" ${formData.state === 'WY' ? 'selected' : ''}>Wyoming</option>
           </select>
         </div>
         <div class="form-group" style="max-width: 120px;">

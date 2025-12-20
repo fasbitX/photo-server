@@ -6,7 +6,7 @@ const cors = require('cors');
 const session = require('express-session');
 const path = require('path');
 
-const { initDatabase } = require('./db-users');
+const { initDatabase, closeDatabase } = require('./database');
 const { registerUploadRoutes } = require('./uploadRoutes');
 const { registerAdminRoutes } = require('./adminRoutes');
 const { registerAuthRoutes } = require('./routes-auth');
@@ -189,9 +189,9 @@ app.set('trust proxy', 1);
 
 async function startServer() {
   try {
-    // Initialize user database
+    // Initialize PostgreSQL database
     await initDatabase();
-    console.log('User database initialized');
+    console.log('PostgreSQL database initialized');
 
     /* ──────────────────────────────────────────────
      *  REGISTER ROUTE MODULES
@@ -230,6 +230,7 @@ async function startServer() {
 ╔════════════════════════════════════════════════════════╗
 ║           SERVER STARTED                               ║
 ╠════════════════════════════════════════════════════════╣
+║  Database: PostgreSQL (text_fasbit)                    ║
 ║  Host: ${HOST}                                         ║    
 ║  Port: ${PORT}                                         ║         
 ║  User Login:  http://${HOST}:${PORT}/login             ║  
@@ -239,6 +240,26 @@ async function startServer() {
 ╚════════════════════════════════════════════════════════╝
       `);
     });
+
+    // Graceful shutdown
+    process.on('SIGTERM', async () => {
+      console.log('SIGTERM received, shutting down gracefully...');
+      await closeDatabase();
+      state.server.close(() => {
+        console.log('Server closed');
+        process.exit(0);
+      });
+    });
+
+    process.on('SIGINT', async () => {
+      console.log('SIGINT received, shutting down gracefully...');
+      await closeDatabase();
+      state.server.close(() => {
+        console.log('Server closed');
+        process.exit(0);
+      });
+    });
+
   } catch (err) {
     console.error('Failed to start server:', err);
     process.exit(1);

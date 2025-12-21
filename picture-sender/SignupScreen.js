@@ -591,7 +591,7 @@ const styles = StyleSheet.create({
     ...Platform.select({
       web: {
         outlineStyle: 'none',
-        WebkitTextFillColor: '#FFFFFF',
+        // WebkitTextFillColor: '#FFFFFF',
         WebkitBoxShadow: '0 0 0px 1000px #030712 inset',
       },
       default: {},

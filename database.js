@@ -567,9 +567,9 @@ async function searchUsersAny({ value, excludeUserId, limit = 25 }) {
     FROM users
     WHERE id <> $1
       AND (
-        ($2 IS NOT NULL AND regexp_replace(COALESCE(phone,''), '[^0-9]', '', 'g') LIKE $2)
-        OR ($3 IS NOT NULL AND replace(lower(COALESCE(user_name,'')), '@', '') LIKE $3)
-        OR ($3 IS NOT NULL AND replace(lower(COALESCE(email,'')), '@', '') LIKE $3)
+        ($2::text IS NOT NULL AND regexp_replace(COALESCE(phone,''), '[^0-9]', '', 'g') LIKE $2::text)
+        OR ($3::text IS NOT NULL AND replace(lower(COALESCE(user_name,'')), '@', '') LIKE $3::text)
+        OR ($3::text IS NOT NULL AND replace(lower(COALESCE(email,'')), '@', '') LIKE $3::text)
       )
     ORDER BY id DESC
     LIMIT $4

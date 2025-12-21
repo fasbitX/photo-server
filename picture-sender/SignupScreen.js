@@ -160,8 +160,19 @@ export default function SignupScreen({ navigation }) {
 
     setLoading(true);
     const signupData = {
-      ...formData,
+      firstName: formData.firstName,
+      lastName: formData.lastName,
+      user_name: formData.userName,  // Convert to snake_case for database
+      streetAddress: formData.streetAddress,
+      city: formData.city,
+      state: formData.state,
+      zip: formData.zip,
+      phone: formData.phone,
+      email: formData.email,
+      gender: formData.gender,
       dateOfBirth,
+      password: formData.password,
+      confirmPassword: formData.confirmPassword,
     };
     const result = await signup(signupData, serverUrl);
     setLoading(false);

@@ -41,7 +41,7 @@ function formatDateSafe(v) {
 function toMoneySafe(v) {
   const n = Number(v);
   if (!Number.isFinite(n)) return '0.00';
-  return n.toFixed(2);
+  return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 /* ════════════════════════════════════════════════════════
@@ -51,17 +51,19 @@ function toMoneySafe(v) {
 function renderUsersListContent(users = [], searchQuery = '') {
   const rows =
     users.length === 0
-      ? `<tr><td colspan="8" style="text-align:center;padding:40px;color:#6B7280;">No users found</td></tr>`
+      ? `<tr><td colspan="9" style="text-align:center;padding:40px;color:#6B7280;">No users found</td></tr>`
       : users
           .map((u) => {
             const status = u.status || 'active';
             const statusClass = status === 'active' ? 'status-active' : 'status-suspended';
             const created = formatDateSafe(u.created_date);
+            const userName = u.user_name || '';
 
             return `
               <tr class="user-row" ondblclick="openUser(${u.id})">
                 <td>${escapeHtml(u.account_number)}</td>
                 <td>${escapeHtml(u.first_name)} ${escapeHtml(u.last_name)}</td>
+                <td>${escapeHtml(userName)}</td>
                 <td>${escapeHtml(u.email)}</td>
                 <td>${escapeHtml(u.phone)}</td>
                 <td><span class="status-badge ${statusClass}">${escapeHtml(status)}</span></td>
@@ -69,7 +71,7 @@ function renderUsersListContent(users = [], searchQuery = '') {
                 <td>${escapeHtml(created)}</td>
                 <td class="actions">
                   <button class="icon-btn" title="Open" onclick="event.stopPropagation(); openUser(${u.id})">↗</button>
-                  <button class="icon-btn" title="Edit" onclick="event.stopPropagation(); openUserEdit(${u.id})">✏</button>
+                  <button class="icon-btn" title="Edit" onclick="event.stopPropagation(); openUserEdit(${u.id})">✎</button>
                   <button class="icon-btn danger" title="Delete" onclick="event.stopPropagation(); quickDelete(${u.id})">🗑</button>
                 </td>
               </tr>
@@ -125,6 +127,7 @@ function renderUsersListContent(users = [], searchQuery = '') {
     <tr>
       <th>Account #</th>
       <th>Name</th>
+      <th>User Name</th>
       <th>Email</th>
       <th>Phone</th>
       <th>Status</th>
@@ -194,7 +197,7 @@ function renderUserDetailContent(user, { editMode = false } = {}) {
   </div>
   <div class="toolbar">
     <button class="icon" title="Close" onclick="closePage()">✕</button>
-    <button class="icon" id="editBtn" title="Edit" onclick="toggleEdit()">✏</button>
+    <button class="icon" id="editBtn" title="Edit" onclick="toggleEdit()">✎</button>
     <button class="icon primary" id="saveBtn" title="Save" onclick="saveUser()" style="display:none">💾</button>
     <button class="icon danger" title="Delete" onclick="deleteUser()">🗑</button>
   </div>
@@ -223,6 +226,11 @@ function renderUserDetailContent(user, { editMode = false } = {}) {
     <div class="field">
       <label>Last Name</label>
       <input id="last_name" value="${escapeHtml(user.last_name)}" />
+    </div>
+
+    <div class="field">
+      <label>User Name</label>
+      <input id="user_name" value="${escapeHtml(user.user_name || '')}" />
     </div>
 
     <div class="field">
@@ -286,7 +294,7 @@ function renderUserDetailContent(user, { editMode = false } = {}) {
   function closePage() { window.location.href = '/admin/users'; }
 
   function setInputsReadonly(isReadonly) {
-    const ids = ['first_name','last_name','email','phone','street_address','city','state','zip','timezone','account_balance'];
+    const ids = ['first_name','last_name','user_name','email','phone','street_address','city','state','zip','timezone','account_balance'];
     ids.forEach(id => {
       const el = document.getElementById(id);
       if (!el) return;
@@ -320,6 +328,7 @@ function renderUserDetailContent(user, { editMode = false } = {}) {
       status: document.getElementById('status').value,
       first_name: document.getElementById('first_name').value,
       last_name: document.getElementById('last_name').value,
+      user_name: document.getElementById('user_name').value,
       email: document.getElementById('email').value,
       phone: document.getElementById('phone').value,
       street_address: document.getElementById('street_address').value,
@@ -388,7 +397,8 @@ function registerUsersAdminRoutes(app, { requireAdmin }) {
           last_name ILIKE $1 OR
           email ILIKE $1 OR
           phone ILIKE $1 OR
-          account_number ILIKE $1
+          account_number ILIKE $1 OR
+          user_name ILIKE $1
         )`;
         params.push(`%${searchQuery}%`);
       }
@@ -454,7 +464,7 @@ function registerUsersAdminRoutes(app, { requireAdmin }) {
       if (!Number.isFinite(id)) return res.status(400).json({ success: false, error: 'Invalid id' });
 
       const allowed = [
-        'status', 'first_name', 'last_name', 'email', 'phone',
+        'status', 'first_name', 'last_name', 'user_name', 'email', 'phone',
         'street_address', 'city', 'state', 'zip', 'timezone',
         'account_balance', 'email_verified'
       ];

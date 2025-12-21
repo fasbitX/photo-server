@@ -473,9 +473,10 @@ const styles = StyleSheet.create({
   searchingText: { color: '#9CA3AF', fontSize: 11 },
 
   searchRow: {
+    position: 'relative',
+    width: '100%',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
   },
   searchIcon: {
     position: 'absolute',
@@ -484,9 +485,12 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
+    minWidth: 0,
+    width: '100%',
     height: 44,
     borderRadius: 12,
-    paddingHorizontal: 38, // room for icon
+    paddingLeft: 38, // room for search icon
+    paddingRight: 38, // room for clear button
     backgroundColor: '#0B1220',
     borderWidth: 1,
     borderColor: '#1F2937',

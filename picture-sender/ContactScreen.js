@@ -244,6 +244,14 @@ export default function ContactScreen({ navigation }) {
     }
   };
 
+  const openContact = (contact, isSaved) => {
+    if (!contact) return;
+    navigation.navigate('ContactDetail', {
+      contact,
+      isSaved: !!isSaved,
+    });
+  };
+
   const renderRow = ({ item, savedMode }) => {
     const name =
       (item.nickname && String(item.nickname).trim()) ||
@@ -254,7 +262,7 @@ export default function ContactScreen({ navigation }) {
     const subtitle = item.user_name ? `@${item.user_name}` : item.email || item.phone || '';
 
     return (
-      <View style={styles.row}>
+      <TouchableOpacity style={styles.row} activeOpacity={0.9} onPress={() => openContact(item, savedMode)}>
         <View style={{ flex: 1 }}>
           <Text style={styles.rowTitle}>{name}</Text>
           {!!subtitle && <Text style={styles.rowSub}>{subtitle}</Text>}
@@ -279,7 +287,7 @@ export default function ContactScreen({ navigation }) {
             <Ionicons name="person-add-outline" size={18} color="#FFFFFF" />
           </TouchableOpacity>
         )}
-      </View>
+      </TouchableOpacity>
     );
   };
 

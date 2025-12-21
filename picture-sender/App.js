@@ -26,6 +26,7 @@ import LoginScreen from './LoginScreen';
 import SignupScreen from './SignupScreen';
 import DashboardScreen from './DashboardScreen';
 import ContactScreen from './ContactScreen';
+import ContactDetailScreen from './ContactDetailScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -314,6 +315,7 @@ function AppNavigator() {
           <Stack.Screen name="Dashboard" component={DashboardScreen} />
           <Stack.Screen name="PhotoUpload" component={PhotoUploadScreen} />
           <Stack.Screen name="Contacts" component={ContactScreen} />
+          <Stack.Screen name="ContactDetail" component={ContactDetailScreen} />
         </>
       ) : (
         <>

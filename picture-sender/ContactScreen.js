@@ -177,7 +177,14 @@ export default function ContactScreen({ navigation }) {
     }, DEBOUNCE_MS);
   };
 
-  const add = async (contactUserId) => {
+  const add = async (contact) => {
+    const contactUserId = contact?.id;
+    const displayName =
+      (contact?.nickname && String(contact.nickname).trim()) ||
+      `${contact?.first_name || ''} ${contact?.last_name || ''}`.trim() ||
+      (contact?.user_name ? String(contact.user_name).replace(/^@/, '') : '') ||
+      'Contact';
+
     if (!base || !user?.id) return;
 
     try {
@@ -185,8 +192,9 @@ export default function ContactScreen({ navigation }) {
         requesterId: user.id,
         contactUserId,
       });
-      Alert.alert('Added', 'Contact saved.');
+      Alert.alert('Added', `Contact ${displayName} added to saved list.`);
       await loadSaved();
+      setMode('saved');
     } catch (err) {
       Alert.alert('Add contact', `Failed: ${String(err.message || err)}`);
     }
@@ -207,7 +215,8 @@ export default function ContactScreen({ navigation }) {
               contactUserId,
             });
             await loadSaved();
-          } catch (err) {
+      setMode('saved');
+    } catch (err) {
             Alert.alert(
               'Remove contact',
               `Failed: ${String(err.message || err)}`
@@ -249,7 +258,7 @@ export default function ContactScreen({ navigation }) {
             <Ionicons name="trash-outline" size={18} color="#FCA5A5" />
           </TouchableOpacity>
         ) : (
-          <TouchableOpacity style={styles.rowBtn} onPress={() => add(item.id)}>
+          <TouchableOpacity style={styles.rowBtn} onPress={() => add(item)}>
             <Ionicons name="person-add-outline" size={18} color="#FFFFFF" />
           </TouchableOpacity>
         )}

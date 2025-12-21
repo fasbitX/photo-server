@@ -79,6 +79,11 @@ export function AuthProvider({ children }) {
     try {
       const url = `${server.replace(/\/+$/, '')}/api/mobile/signup`;
       
+      console.log('Signup request data:', {
+        url,
+        userData: { ...userData, password: '[REDACTED]', confirmPassword: '[REDACTED]' }
+      });
+      
       const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -86,6 +91,12 @@ export function AuthProvider({ children }) {
       });
 
       const data = await response.json();
+      
+      console.log('Signup response:', {
+        status: response.status,
+        ok: response.ok,
+        data
+      });
 
       if (!response.ok) {
         throw new Error(data.error || 'Signup failed');

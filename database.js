@@ -27,6 +27,21 @@ function initDatabase() {
       const client = await pool.connect();
       console.log('Connected to PostgreSQL database');
 
+      // ✅ Sanity check: confirm actual DB + user + host
+      try {
+        const info = await client.query(`
+          SELECT
+            current_database() AS db,
+            current_schema()   AS schema,
+            current_user       AS db_user,
+            inet_server_addr() AS server_addr,
+            inet_server_port() AS server_port
+        `);
+        console.log('[db.info]', info.rows[0]);
+      } catch (e) {
+        console.warn('[db.info] failed', e.message);
+      }
+
       // Create users table
       await client.query(`
         CREATE TABLE IF NOT EXISTS users (
@@ -468,49 +483,60 @@ async function searchUsersByIdentifier({ type, value, excludeUserId, limit = 20 
   }
 
   if (type === 'phone') {
-    const digits = q.replace(/\D/g, '');
-    if (!digits) return [];
+  const digits = q.replace(/\D/g, '');
+  if (!digits) return [];
 
-    const { rows } = await pool.query(
-      `
-      SELECT id, user_name, first_name, last_name, email, phone
-      FROM users
-      WHERE id <> $1
-        AND regexp_replace(COALESCE(phone,''), '\\D', '', 'g') LIKE $2
-      ORDER BY id DESC
-      LIMIT $3
-      `,
-      [exId, `%${digits}%`, limit]
-    );
-    return rows;
-  }
+  // TEMP DEBUG (remove later)
+  console.log('[db.searchUsersByIdentifier]', { type, q, digits, exId });
 
-  if (type === 'email') {
-    const { rows } = await pool.query(
-      `
-      SELECT id, user_name, first_name, last_name, email, phone
-      FROM users
-      WHERE id <> $1
-        AND COALESCE(email,'') ILIKE $2
-      ORDER BY id DESC
-      LIMIT $3
-      `,
-      [exId, `%${q}%`, limit]
-    );
-    return rows;
-  }
-
-  // username
   const { rows } = await pool.query(
     `
     SELECT id, user_name, first_name, last_name, email, phone
     FROM users
     WHERE id <> $1
-      AND COALESCE(user_name,'') ILIKE $2
+      AND (
+        -- normalized digit search (punctuation-insensitive)
+        regexp_replace(COALESCE(phone,''), '[^0-9]', '', 'g') LIKE $2
+        -- raw search fallback (lets "6666" hit even if regex normalization fails)
+        OR COALESCE(phone,'') ILIKE $3
+      )
+    ORDER BY id DESC
+    LIMIT $4
+    `,
+    [exId, `%${digits}%`, `%${q}%`, limit]
+  );
+
+  return rows;
+}
+
+  if (type === 'email') {
+    const qq = q.toLowerCase().replace(/@/g, '');
+    const { rows } = await pool.query(
+      `
+      SELECT id, user_name, first_name, last_name, email, phone
+      FROM users
+      WHERE id <> $1
+        AND replace(lower(COALESCE(email,'')), '@', '') LIKE $2
+      ORDER BY id DESC
+      LIMIT $3
+      `,
+      [exId, `%${qq}%`, limit]
+    );
+    return rows;
+  }
+
+  // username
+  const qq = q.toLowerCase().replace(/@/g, '');
+  const { rows } = await pool.query(
+    `
+    SELECT id, user_name, first_name, last_name, email, phone
+    FROM users
+    WHERE id <> $1
+      AND replace(lower(COALESCE(user_name,'')), '@', '') LIKE $2
     ORDER BY id DESC
     LIMIT $3
     `,
-    [exId, `%${q}%`, limit]
+    [exId, `%${qq}%`, limit]
   );
   return rows;
 }

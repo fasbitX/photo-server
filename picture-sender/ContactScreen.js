@@ -69,6 +69,28 @@ export default function ContactScreen({ navigation }) {
 
   const base = safeServerBase(serverUrl);
 
+  const notify = (title, message) => {
+    // RN-web Alert can be inconsistent; use window.alert on web for guaranteed visibility.
+    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.alert) {
+      window.alert(`${title}: ${message}`);
+      return;
+    }
+    Alert.alert(title, message);
+  };
+
+  const confirmDialog = (title, message) => {
+    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.confirm) {
+      return Promise.resolve(window.confirm(`${title}\n\n${message}`));
+    }
+    return new Promise((resolve) => {
+      Alert.alert(title, message, [
+        { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+        { text: 'OK', style: 'destructive', onPress: () => resolve(true) },
+      ]);
+    });
+  };
+
+
   const MIN_CHARS = 3;
   const DEBOUNCE_MS = 300;
 
@@ -200,31 +222,26 @@ export default function ContactScreen({ navigation }) {
     }
   };
 
-  const remove = async (contactUserId) => {
+  const remove = async (contactUserId, contactLabel = 'Contact') => {
     if (!base || !user?.id) return;
 
-    Alert.alert('Remove contact', 'Remove this contact from your saved list?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Remove',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await postJson(`${base}/api/mobile/contacts/remove`, {
-              requesterId: user.id,
-              contactUserId,
-            });
-            await loadSaved();
+    const ok = await confirmDialog(
+      'Remove contact',
+      `Remove ${contactLabel} from your saved list?`
+    );
+    if (!ok) return;
+
+    try {
+      await postJson(`${base}/api/mobile/contacts/remove`, {
+        requesterId: user.id,
+        contactUserId,
+      });
+      await loadSaved();
       setMode('saved');
+      notify('Removed', `${contactLabel} removed from saved list.`);
     } catch (err) {
-            Alert.alert(
-              'Remove contact',
-              `Failed: ${String(err.message || err)}`
-            );
-          }
-        },
-      },
-    ]);
+      notify('Remove contact', `Failed: ${String(err.message || err)}`);
+    }
   };
 
   const renderRow = ({ item, savedMode }) => {
@@ -253,7 +270,7 @@ export default function ContactScreen({ navigation }) {
         {savedMode ? (
           <TouchableOpacity
             style={styles.rowBtnDanger}
-            onPress={() => remove(item.id)}
+            onPress={() => remove(item.id, name)}
           >
             <Ionicons name="trash-outline" size={18} color="#FCA5A5" />
           </TouchableOpacity>

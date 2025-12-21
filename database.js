@@ -523,7 +523,7 @@ async function addContact({ userId, contactUserId, nickname = null }) {
   const { rows } = await pool.query(
     `
     INSERT INTO contacts (user_id, contact_user_id, nickname, added_date)
-    VALUES ($1, $2, $3, NOW())
+    VALUES ($1, $2, $3, $4)
     ON CONFLICT (user_id, contact_user_id)
     DO UPDATE SET nickname = COALESCE(EXCLUDED.nickname, contacts.nickname)
     RETURNING user_id, contact_user_id, nickname, added_date

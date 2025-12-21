@@ -189,17 +189,27 @@ async function createUser(userData) {
     const verificationToken = crypto.randomBytes(32).toString('hex');
     const now = Date.now();
 
+    console.log('Creating user with data:', {
+      accountNumber,
+      firstName: userData.firstName,
+      lastName: userData.lastName,
+      user_name: userData.user_name,
+      email: userData.email,
+      phone: userData.phone
+    });
+
     const result = await pool.query(
       `INSERT INTO users (
-        account_number, first_name, last_name, street_address, city,
+        account_number, first_name, last_name, user_name, street_address, city,
         state, zip, phone, email, password_hash, verification_token,
         created_date, last_modified
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
       RETURNING id`,
       [
         accountNumber,
         userData.firstName,
         userData.lastName,
+        userData.user_name,       // ADDED: user_name field
         userData.streetAddress,
         userData.city,
         userData.state,
@@ -213,18 +223,25 @@ async function createUser(userData) {
       ]
     );
 
+    console.log('User created successfully with ID:', result.rows[0].id);
+
     return {
       userId: result.rows[0].id,
       accountNumber,
       verificationToken
     };
   } catch (err) {
+    console.error('Database error in createUser:', err.message, err.code, err.constraint);
+    
     if (err.code === '23505') { // Unique violation
       if (err.constraint === 'users_phone_key') {
         throw new Error('Phone number already registered');
       }
       if (err.constraint === 'users_email_key') {
         throw new Error('Email already registered');
+      }
+      if (err.constraint === 'users_user_name_key') {
+        throw new Error('Username already taken');
       }
     }
     throw err;

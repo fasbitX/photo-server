@@ -79,40 +79,85 @@ function registerMobileApiRoutes(app) {
   
   app.post('/api/mobile/signup', express.json(), async (req, res) => {
     try {
+      console.log('Signup endpoint hit - req.body:', req.body);
+      
       const {
-        firstName, lastName, streetAddress, city, state, zip,
-        phone, email, password, confirmPassword
+        firstName, lastName, user_name, streetAddress, city, state, zip,
+        phone, email, password, confirmPassword, gender, dateOfBirth
       } = req.body;
       
       // Validation
-      if (!firstName || !lastName || !streetAddress || !city || !state || !zip || !phone || !email || !password) {
+      if (!firstName || !lastName || !user_name || !streetAddress || !city || !state || !zip || !phone || !email || !password) {
+        console.log('Missing required fields:', {
+          firstName: !!firstName,
+          lastName: !!lastName,
+          user_name: !!user_name,
+          streetAddress: !!streetAddress,
+          city: !!city,
+          state: !!state,
+          zip: !!zip,
+          phone: !!phone,
+          email: !!email,
+          password: !!password
+        });
         return res.status(400).json({ error: 'All fields are required' });
       }
       
+      // Validate username format
+      if (!/^@[a-zA-Z0-9_#$%^&*()\-+=.]{1,20}$/.test(user_name)) {
+        console.log('Invalid username format:', user_name);
+        return res.status(400).json({ 
+          error: 'Username must start with @ and can contain letters, numbers, and special characters (#$%^&*()-+=_.)' 
+        });
+      }
+      
       if (password !== confirmPassword) {
+        console.log('Passwords do not match');
         return res.status(400).json({ error: 'Passwords do not match' });
       }
       
       if (password.length < 8) {
+        console.log('Password too short');
         return res.status(400).json({ error: 'Password must be at least 8 characters' });
       }
       
-      // Create user - this will throw error if phone/email already exists
+      console.log('Attempting to create user with user_name:', user_name);
+      
+      // Create user - this will throw error if phone/email/username already exists
       let result;
       try {
         result = await createUser({
-          firstName, lastName, streetAddress, city, state, zip,
-          phone, email, password
+          firstName, 
+          lastName, 
+          user_name,
+          streetAddress, 
+          city, 
+          state, 
+          zip,
+          phone, 
+          email, 
+          password,
+          gender,
+          dateOfBirth
         });
+        
+        console.log('User created successfully:', result.accountNumber);
       } catch (createErr) {
+        console.error('createUser error:', createErr.message);
+        
         // Handle specific database errors
         let errorMsg = 'Signup failed';
         if (createErr.message.includes('Phone number already registered')) {
           errorMsg = 'This phone number is already registered. Please use a different phone number or log in.';
         } else if (createErr.message.includes('Email already registered')) {
           errorMsg = 'This email is already registered. Please use a different email or log in.';
+        } else if (createErr.message.includes('user_name') && createErr.message.includes('already exists')) {
+          errorMsg = 'This username is already taken. Please choose a different username.';
         } else if (createErr.message.includes('already registered')) {
           errorMsg = createErr.message;
+        } else {
+          // Return the actual error for debugging
+          errorMsg = `Signup failed: ${createErr.message}`;
         }
         return res.status(400).json({ error: errorMsg });
       }
@@ -120,6 +165,7 @@ function registerMobileApiRoutes(app) {
       // User created successfully - now send verification email
       try {
         await sendVerificationEmail(email, result.verificationToken, req);
+        console.log('Verification email sent to:', email);
       } catch (emailError) {
         console.error('Failed to send verification email:', emailError);
         // Continue anyway - user is created, just email failed

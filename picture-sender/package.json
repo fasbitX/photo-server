@@ -19,7 +19,7 @@
     "@react-navigation/native-stack": "^6.11.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
-    "expo": "~52.0.0",
+    "expo": "^54.0.30",
     "expo-asset": "~11.0.5",
     "expo-build-properties": "~0.13.3",
     "expo-crypto": "~14.0.1",

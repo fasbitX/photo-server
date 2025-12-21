@@ -13,6 +13,9 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from './auth';
+import { Dimensions } from 'react-native';
+
+const MAX_WIDTH = 288; 
 
 function safeServerBase(serverUrl) {
   return String(serverUrl || '').replace(/\/+$/, '');
@@ -177,117 +180,131 @@ export default function ContactScreen({ navigation }) {
   };
 
   return (
-    <View style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
-          style={styles.headerBtn}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        >
-          <Ionicons name="arrow-back" size={22} color="#E5E7EB" />
-        </TouchableOpacity>
-
-        <Text style={styles.headerTitle}>Contacts</Text>
-
-        <View style={styles.headerBtn} />
-      </View>
-
-      {/* Search box */}
-      <View style={styles.searchCard}>
-        <Text style={styles.label}>Search by</Text>
-
-        <View style={styles.typeRow}>
-          {['phone', 'email', 'username'].map((t) => (
+    <View style={styles.outerContainer}>
+        <View style={styles.container}>
+        {/* Header */}
+        <View style={styles.header}>
             <TouchableOpacity
-              key={t}
-              style={[styles.typeChip, type === t && styles.typeChipActive]}
-              onPress={() => setType(t)}
+            onPress={() => navigation.goBack()}
+            style={styles.headerBtn}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
-              <Text style={[styles.typeChipText, type === t && styles.typeChipTextActive]}>
-                {t === 'phone' ? 'Phone' : t === 'email' ? 'Email' : 'Username'}
-              </Text>
+            <Ionicons name="arrow-back" size={22} color="#E5E7EB" />
             </TouchableOpacity>
-          ))}
+
+            <Text style={styles.headerTitle}>Contacts</Text>
+
+            <View style={styles.headerBtn} />
         </View>
 
-        <View style={styles.searchRow}>
-          <TextInput
-            style={styles.input}
-            placeholder={
-              type === 'phone' ? 'Enter phone #' : type === 'email' ? 'Enter email' : 'Enter username'
-            }
-            placeholderTextColor="#6B7280"
-            autoCapitalize="none"
-            autoCorrect={false}
-            value={value}
-            onChangeText={setValue}
-            onSubmitEditing={doSearch}
-            returnKeyType="search"
-            keyboardType={type === 'phone' ? 'phone-pad' : 'default'}
-          />
+        {/* Search box */}
+        <View style={styles.searchCard}>
+            <Text style={styles.label}>Search by</Text>
 
-          <TouchableOpacity style={styles.searchBtn} onPress={doSearch} disabled={searching}>
-            {searching ? (
-              <ActivityIndicator />
+            <View style={styles.typeRow}>
+            {['phone', 'email', 'username'].map((t) => (
+                <TouchableOpacity
+                key={t}
+                style={[styles.typeChip, type === t && styles.typeChipActive]}
+                onPress={() => setType(t)}
+                >
+                <Text style={[styles.typeChipText, type === t && styles.typeChipTextActive]}>
+                    {t === 'phone' ? 'Phone' : t === 'email' ? 'Email' : 'Username'}
+                </Text>
+                </TouchableOpacity>
+            ))}
+            </View>
+
+            <View style={styles.searchRow}>
+            <TextInput
+                style={styles.input}
+                placeholder={
+                type === 'phone' ? 'Enter phone #' : type === 'email' ? 'Enter email' : 'Enter username'
+                }
+                placeholderTextColor="#6B7280"
+                autoCapitalize="none"
+                autoCorrect={false}
+                value={value}
+                onChangeText={setValue}
+                onSubmitEditing={doSearch}
+                returnKeyType="search"
+                keyboardType={type === 'phone' ? 'phone-pad' : 'default'}
+            />
+
+            <TouchableOpacity style={styles.searchBtn} onPress={doSearch} disabled={searching}>
+                {searching ? (
+                <ActivityIndicator />
+                ) : (
+                <Ionicons name="search" size={18} color="#FFFFFF" />
+                )}
+            </TouchableOpacity>
+            </View>
+
+            <View style={styles.modeRow}>
+            <TouchableOpacity
+                style={[styles.modeChip, mode === 'saved' && styles.modeChipActive]}
+                onPress={() => setMode('saved')}
+            >
+                <Text style={[styles.modeChipText, mode === 'saved' && styles.modeChipTextActive]}>
+                Saved
+                </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+                style={[styles.modeChip, mode === 'search' && styles.modeChipActive]}
+                onPress={() => setMode('search')}
+            >
+                <Text style={[styles.modeChipText, mode === 'search' && styles.modeChipTextActive]}>
+                Results
+                </Text>
+            </TouchableOpacity>
+            </View>
+        </View>
+
+        {/* Lists */}
+        {mode === 'saved' ? (
+            loadingSaved ? (
+            <View style={styles.center}>
+                <ActivityIndicator />
+                <Text style={styles.centerText}>Loading saved contacts…</Text>
+            </View>
             ) : (
-              <Ionicons name="search" size={18} color="#FFFFFF" />
-            )}
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.modeRow}>
-          <TouchableOpacity
-            style={[styles.modeChip, mode === 'saved' && styles.modeChipActive]}
-            onPress={() => setMode('saved')}
-          >
-            <Text style={[styles.modeChipText, mode === 'saved' && styles.modeChipTextActive]}>
-              Saved
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.modeChip, mode === 'search' && styles.modeChipActive]}
-            onPress={() => setMode('search')}
-          >
-            <Text style={[styles.modeChipText, mode === 'search' && styles.modeChipTextActive]}>
-              Results
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* Lists */}
-      {mode === 'saved' ? (
-        loadingSaved ? (
-          <View style={styles.center}>
-            <ActivityIndicator />
-            <Text style={styles.centerText}>Loading saved contacts…</Text>
-          </View>
+            <FlatList
+                data={saved}
+                keyExtractor={(item) => String(item.id)}
+                contentContainerStyle={saved.length ? null : styles.center}
+                ListEmptyComponent={<Text style={styles.centerText}>No saved contacts yet.</Text>}
+                renderItem={({ item }) => renderRow({ item, savedMode: true })}
+            />
+            )
         ) : (
-          <FlatList
-            data={saved}
+            <FlatList
+            data={results}
             keyExtractor={(item) => String(item.id)}
-            contentContainerStyle={saved.length ? null : styles.center}
-            ListEmptyComponent={<Text style={styles.centerText}>No saved contacts yet.</Text>}
-            renderItem={({ item }) => renderRow({ item, savedMode: true })}
-          />
-        )
-      ) : (
-        <FlatList
-          data={results}
-          keyExtractor={(item) => String(item.id)}
-          contentContainerStyle={results.length ? null : styles.center}
-          ListEmptyComponent={<Text style={styles.centerText}>No results.</Text>}
-          renderItem={({ item }) => renderRow({ item, savedMode: false })}
-        />
-      )}
+            contentContainerStyle={results.length ? null : styles.center}
+            ListEmptyComponent={<Text style={styles.centerText}>No results.</Text>}
+            renderItem={({ item }) => renderRow({ item, savedMode: false })}
+            />
+        )}
+        </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#111827' },
+
+    outerContainer: {
+    flex: 1,
+    backgroundColor: '#000000',
+    alignItems: 'center',
+    },
+    container: {
+    flex: 1,
+    width: '100%',
+    maxWidth: MAX_WIDTH,
+    backgroundColor: '#111827',
+    },
 
   header: {
     height: 64,

@@ -643,4 +643,5 @@ const styles = StyleSheet.create({
   logScroll: {
     maxHeight: 220,
   },
+  
 });

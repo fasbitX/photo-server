@@ -39,6 +39,26 @@ async function postJson(url, body) {
   return json;
 }
 
+function notify(title, message) {
+  if (Platform.OS === 'web' && typeof window !== 'undefined' && window.alert) {
+    window.alert(`${title}: ${message}`);
+    return;
+  }
+  Alert.alert(title, message);
+}
+
+function confirmWebOrAlert(title, message, onYes) {
+  if (Platform.OS === 'web' && typeof window !== 'undefined' && window.confirm) {
+    const ok = window.confirm(message);
+    if (ok) onYes();
+    return;
+  }
+  Alert.alert(title, message, [
+    { text: 'Cancel', style: 'cancel' },
+    { text: 'Remove', style: 'destructive', onPress: onYes },
+  ]);
+}
+
 export default function ContactDetailScreen({ navigation, route }) {
   const { user, serverUrl } = useAuth();
   const base = safeServerBase(serverUrl);
@@ -46,48 +66,77 @@ export default function ContactDetailScreen({ navigation, route }) {
   const contact = route?.params?.contact || null;
   const isSaved = !!route?.params?.isSaved;
 
-  const [saving, setSaving] = useState(false);
+  const [working, setWorking] = useState(false);
+
+  const fullName = useMemo(() => {
+    if (!contact) return '';
+    const fn = String(contact.first_name || '').trim();
+    const ln = String(contact.last_name || '').trim();
+    return `${fn} ${ln}`.trim();
+  }, [contact]);
 
   const displayName = useMemo(() => {
     if (!contact) return 'Contact';
-    const name =
-      (contact.nickname && String(contact.nickname).trim()) ||
-      `${contact.first_name || ''} ${contact.last_name || ''}`.trim() ||
-      (contact.user_name ? String(contact.user_name).replace(/^@/, '') : '') ||
-      'Contact';
-    return name;
-  }, [contact]);
+    // Prefer First/Last, fallback to nickname, then username
+    if (fullName) return fullName;
 
-  const notify = (title, message) => {
-    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.alert) {
-      window.alert(`${title}: ${message}`);
-      return;
-    }
-    Alert.alert(title, message);
-  };
+    const nick = (contact.nickname && String(contact.nickname).trim()) || '';
+    if (nick) return nick;
+
+    const uname = contact.user_name ? String(contact.user_name).replace(/^@/, '') : '';
+    return uname || 'Contact';
+  }, [contact, fullName]);
+
+  const headerUsername = useMemo(() => {
+    if (!contact?.user_name) return '';
+    return String(contact.user_name).startsWith('@') ? contact.user_name : `@${contact.user_name}`;
+  }, [contact]);
 
   const handleSave = async () => {
     if (!contact?.id) return;
     if (!base) {
-      notify('Server not set', 'Tap the gear icon and set your server URL first.');
+      notify('Server not set', 'Set your server URL first.');
       return;
     }
     if (!user?.id) return;
 
     try {
-      setSaving(true);
+      setWorking(true);
       await postJson(`${base}/api/mobile/contacts/add`, {
         requesterId: user.id,
         contactUserId: contact.id,
       });
       notify('Added', `Contact ${displayName} added to saved list.`);
-      // When going back, Contacts screen will refresh via focus effect.
       navigation.goBack();
     } catch (err) {
       notify('Add contact', `Failed: ${String(err.message || err)}`);
     } finally {
-      setSaving(false);
+      setWorking(false);
     }
+  };
+
+  const doRemove = async () => {
+    if (!contact?.id) return;
+    if (!base) return;
+    if (!user?.id) return;
+
+    try {
+      setWorking(true);
+      await postJson(`${base}/api/mobile/contacts/remove`, {
+        requesterId: user.id,
+        contactUserId: contact.id,
+      });
+      notify('Removed', `Contact ${displayName} removed from saved list.`);
+      navigation.goBack();
+    } catch (err) {
+      notify('Remove contact', `Failed: ${String(err.message || err)}`);
+    } finally {
+      setWorking(false);
+    }
+  };
+
+  const handleRemove = () => {
+    confirmWebOrAlert('Remove contact', `Remove ${displayName} from your saved list?`, doRemove);
   };
 
   if (!contact) {
@@ -119,11 +168,9 @@ export default function ContactDetailScreen({ navigation, route }) {
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.headerBtn} />
-
           <Text style={styles.headerTitle} numberOfLines={1}>
             {displayName}
           </Text>
-
           <TouchableOpacity
             onPress={() => navigation.goBack()}
             style={styles.headerBtn}
@@ -136,7 +183,12 @@ export default function ContactDetailScreen({ navigation, route }) {
         <ScrollView contentContainerStyle={styles.scroll}>
           {/* Card */}
           <View style={styles.card}>
-            <Field label="Username" value={contact.user_name || ''} />
+            {/* Put first/last name here in the card */}
+            <Text style={styles.cardName}>{displayName}</Text>
+            {!!headerUsername && <Text style={styles.cardSub}>{headerUsername}</Text>}
+            <View style={styles.divider} />
+
+            <Field label="Username" value={headerUsername} />
             <Field label="Email" value={contact.email || ''} />
             <Field label="Phone" value={contact.phone || ''} />
 
@@ -146,30 +198,39 @@ export default function ContactDetailScreen({ navigation, route }) {
             <Field label="State" value={contact.state || ''} />
             <Field label="ZIP" value={contact.zip || ''} />
 
-            {!!contact.account_number && (
-              <Field label="Account #" value={contact.account_number} />
-            )}
+            {!!contact.account_number && <Field label="Account #" value={contact.account_number} />}
           </View>
 
-          {!isSaved && (
+          {!isSaved ? (
             <TouchableOpacity
-              style={[styles.saveBtn, saving && styles.saveBtnDisabled]}
+              style={[styles.primaryBtn, working && styles.btnDisabled]}
               onPress={handleSave}
-              disabled={saving}
+              disabled={working}
             >
-              {saving ? (
+              {working ? (
                 <ActivityIndicator color="#FFFFFF" />
               ) : (
                 <>
                   <Ionicons name="person-add-outline" size={18} color="#FFFFFF" />
-                  <Text style={styles.saveBtnText}>Save Contact</Text>
+                  <Text style={styles.primaryBtnText}>Save Contact</Text>
                 </>
               )}
             </TouchableOpacity>
-          )}
-
-          {isSaved && (
-            <Text style={styles.savedHint}>This contact is already in your saved list.</Text>
+          ) : (
+            <TouchableOpacity
+              style={[styles.dangerBtn, working && styles.btnDisabled]}
+              onPress={handleRemove}
+              disabled={working}
+            >
+              {working ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <>
+                  <Ionicons name="trash-outline" size={18} color="#FFFFFF" />
+                  <Text style={styles.dangerBtnText}>Remove from Saved</Text>
+                </>
+              )}
+            </TouchableOpacity>
           )}
         </ScrollView>
       </View>
@@ -222,11 +283,15 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 14,
   },
+  cardName: { color: '#FFFFFF', fontSize: 18, fontWeight: '900', marginBottom: 6 },
+  cardSub: { color: '#9CA3AF', fontSize: 12, marginBottom: 10 },
+  divider: { height: 1, backgroundColor: '#111827', marginBottom: 8 },
+
   field: { paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#111827' },
   fieldLabel: { color: '#9CA3AF', fontSize: 11, fontWeight: '800' },
   fieldValue: { color: '#FFFFFF', fontSize: 14, marginTop: 6 },
 
-  saveBtn: {
+  primaryBtn: {
     marginTop: 14,
     backgroundColor: '#2563EB',
     borderRadius: 999,
@@ -236,10 +301,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 10,
   },
-  saveBtnDisabled: { opacity: 0.6 },
-  saveBtnText: { color: '#FFFFFF', fontWeight: '900' },
+  primaryBtnText: { color: '#FFFFFF', fontWeight: '900' },
 
-  savedHint: { marginTop: 12, color: '#6B7280', textAlign: 'center', fontSize: 12 },
+  dangerBtn: {
+    marginTop: 14,
+    backgroundColor: '#DC2626',
+    borderRadius: 999,
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 10,
+  },
+  dangerBtnText: { color: '#FFFFFF', fontWeight: '900' },
+
+  btnDisabled: { opacity: 0.6 },
 
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
   centerText: { color: '#9CA3AF', textAlign: 'center' },

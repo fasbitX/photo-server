@@ -57,7 +57,7 @@ export default function SignupScreen({ navigation }) {
     : `http://${SERVER_HOST}${SERVER_PORT === '80' ? '' : `:${SERVER_PORT}`}`;
 
   const updateField = (field, value) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+    setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
   const handleUserNameChange = (value) => {
@@ -65,14 +65,16 @@ export default function SignupScreen({ navigation }) {
     if (!value.startsWith('@')) {
       value = '@' + value.replace(/^@+/, '');
     }
-    
+
     // Remove any @ symbols that aren't at the beginning
     if (value.length > 1) {
       value = '@' + value.slice(1).replace(/@/g, '');
     }
-    
+
     // Limit to 21 characters and allow alphanumeric, underscore, and special chars (no @)
-    const cleaned = value.slice(0, 21).replace(/[^@a-zA-Z0-9_#$%^&*()\-+=.]/g, '');
+    const cleaned = value
+      .slice(0, 21)
+      .replace(/[^@a-zA-Z0-9_#$%^&*()\-+=.]/g, '');
     updateField('userName', cleaned);
   };
 
@@ -96,7 +98,7 @@ export default function SignupScreen({ navigation }) {
       'confirmPassword',
     ];
 
-    const missingFields = requiredFields.filter(field => !formData[field]);
+    const missingFields = requiredFields.filter((field) => !formData[field]);
     if (missingFields.length > 0) {
       Alert.alert('Error', 'Please fill in all required fields');
       return;
@@ -109,7 +111,10 @@ export default function SignupScreen({ navigation }) {
     }
 
     if (!/^@[a-zA-Z0-9_#$%^&*()\-+=.]{1,20}$/.test(formData.userName)) {
-      Alert.alert('Error', 'Username must start with @ and can contain letters, numbers, and special characters (#$%^&*()-+=_.)');
+      Alert.alert(
+        'Error',
+        'Username must start with @ and can contain letters, numbers, and special characters (#$%^&*()-+=_.)'
+      );
       return;
     }
 
@@ -145,7 +150,10 @@ export default function SignupScreen({ navigation }) {
     }
 
     // Format as MM/DD/YYYY with zero-padding
-    const dateOfBirth = `${String(month).padStart(2, '0')}/${String(day).padStart(2, '0')}/${year}`;
+    const dateOfBirth = `${String(month).padStart(2, '0')}/${String(day).padStart(
+      2,
+      '0'
+    )}/${year}`;
 
     // Validate the constructed date is valid
     const testDate = new Date(year, month - 1, day);
@@ -159,10 +167,11 @@ export default function SignupScreen({ navigation }) {
     }
 
     setLoading(true);
+
     const signupData = {
       firstName: formData.firstName,
       lastName: formData.lastName,
-      user_name: formData.userName,  // Convert to snake_case for database
+      user_name: formData.userName, // Convert to snake_case for database
       streetAddress: formData.streetAddress,
       city: formData.city,
       state: formData.state,
@@ -174,6 +183,7 @@ export default function SignupScreen({ navigation }) {
       password: formData.password,
       confirmPassword: formData.confirmPassword,
     };
+
     const result = await signup(signupData, serverUrl);
     setLoading(false);
 
@@ -184,44 +194,57 @@ export default function SignupScreen({ navigation }) {
         [{ text: 'OK', onPress: () => navigation.navigate('Login') }]
       );
     } else {
-      // Check if error is about already registered email, phone, or username
       const errorMsg = result.error || 'Please try again';
-      const isAlreadyRegistered = 
+      const isAlreadyRegistered =
         errorMsg.toLowerCase().includes('already registered') ||
         errorMsg.toLowerCase().includes('email already') ||
         errorMsg.toLowerCase().includes('phone number already') ||
         errorMsg.toLowerCase().includes('username already') ||
         errorMsg.toLowerCase().includes('user_name already');
-      
+
       if (isAlreadyRegistered) {
-        Alert.alert(
-          'Account Already Exists',
-          errorMsg,
-          [
-            { text: 'Cancel', style: 'cancel' },
-            { 
-              text: 'Reset Password', 
-              onPress: () => {
-                // Navigate to login then they can use forgot password
-                navigation.navigate('Login');
-              }
-            },
-            { 
-              text: 'Log In', 
-              style: 'default',
-              onPress: () => navigation.navigate('Login')
-            },
-          ]
-        );
+        Alert.alert('Account Already Exists', errorMsg, [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Reset Password',
+            onPress: () => navigation.navigate('Login'),
+          },
+          {
+            text: 'Log In',
+            style: 'default',
+            onPress: () => navigation.navigate('Login'),
+          },
+        ]);
       } else {
         Alert.alert('Signup Failed', errorMsg);
       }
     }
   };
 
+  // Web-only: use a real <form> to satisfy browser password heuristics.
+  // Native: just use a View.
+  const CardWrapper = Platform.OS === 'web' ? 'form' : View;
+
+  const cardWrapperProps =
+    Platform.OS === 'web'
+      ? {
+          onSubmit: (e) => {
+            e.preventDefault();
+            handleSignup();
+          },
+          noValidate: true,
+          autoComplete: 'on',
+        }
+      : {};
+
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      <View style={styles.card}>
+      <CardWrapper style={styles.card} {...cardWrapperProps}>
+        {/* Web-only hidden submit so Enter triggers form submit */}
+        {Platform.OS === 'web' && (
+          <button type="submit" style={{ display: 'none' }} aria-hidden="true" />
+        )}
+
         <Text style={styles.title}>Create Account</Text>
         <Text style={styles.subtitle}>Join Fasbit today</Text>
 
@@ -234,7 +257,7 @@ export default function SignupScreen({ navigation }) {
               ref={firstNameRef}
               style={styles.input}
               value={formData.firstName}
-              onChangeText={val => updateField('firstName', val)}
+              onChangeText={(val) => updateField('firstName', val)}
               placeholder="John"
               placeholderTextColor="#6B7280"
               textContentType="givenName"
@@ -252,7 +275,7 @@ export default function SignupScreen({ navigation }) {
               ref={lastNameRef}
               style={styles.input}
               value={formData.lastName}
-              onChangeText={val => updateField('lastName', val)}
+              onChangeText={(val) => updateField('lastName', val)}
               placeholder="Doe"
               placeholderTextColor="#6B7280"
               textContentType="familyName"
@@ -293,7 +316,7 @@ export default function SignupScreen({ navigation }) {
             ref={streetAddressRef}
             style={styles.input}
             value={formData.streetAddress}
-            onChangeText={val => updateField('streetAddress', val)}
+            onChangeText={(val) => updateField('streetAddress', val)}
             placeholder="123 Main St"
             placeholderTextColor="#6B7280"
             textContentType="streetAddressLine1"
@@ -312,7 +335,7 @@ export default function SignupScreen({ navigation }) {
               ref={cityRef}
               style={styles.input}
               value={formData.city}
-              onChangeText={val => updateField('city', val)}
+              onChangeText={(val) => updateField('city', val)}
               placeholder="Burlington"
               placeholderTextColor="#6B7280"
               textContentType="addressCity"
@@ -329,11 +352,10 @@ export default function SignupScreen({ navigation }) {
             <View style={styles.pickerContainer}>
               <Picker
                 selectedValue={formData.state}
-                onValueChange={val => updateField('state', val)}
+                onValueChange={(val) => updateField('state', val)}
                 style={[styles.picker, !formData.state && styles.pickerPlaceholder]}
-                dropdownIconColor='#6B7280'
-                >
-
+                dropdownIconColor="#6B7280"
+              >
                 <Picker.Item label="VT" value="VT" />
                 <Picker.Item label="NH" value="NH" />
                 <Picker.Item label="NY" value="NY" />
@@ -396,7 +418,7 @@ export default function SignupScreen({ navigation }) {
               ref={zipRef}
               style={styles.input}
               value={formData.zip}
-              onChangeText={val => updateField('zip', val)}
+              onChangeText={(val) => updateField('zip', val)}
               placeholder="05401"
               placeholderTextColor="#6B7280"
               keyboardType="numeric"
@@ -417,7 +439,7 @@ export default function SignupScreen({ navigation }) {
             ref={phoneRef}
             style={styles.input}
             value={formData.phone}
-            onChangeText={val => updateField('phone', val)}
+            onChangeText={(val) => updateField('phone', val)}
             placeholder="(802) 555-1234"
             placeholderTextColor="#6B7280"
             keyboardType="phone-pad"
@@ -436,7 +458,7 @@ export default function SignupScreen({ navigation }) {
             ref={emailRef}
             style={styles.input}
             value={formData.email}
-            onChangeText={val => updateField('email', val)}
+            onChangeText={(val) => updateField('email', val)}
             placeholder="john.doe@example.com"
             placeholderTextColor="#6B7280"
             keyboardType="email-address"
@@ -456,7 +478,7 @@ export default function SignupScreen({ navigation }) {
           <View style={styles.pickerContainer}>
             <Picker
               selectedValue={formData.gender}
-              onValueChange={val => updateField('gender', val)}
+              onValueChange={(val) => updateField('gender', val)}
               style={styles.picker}
               dropdownIconColor="#9CA3AF"
             >
@@ -473,18 +495,17 @@ export default function SignupScreen({ navigation }) {
           <Text style={styles.label}>
             Date of Birth<Text style={styles.required}>*</Text>
           </Text>
+
           <View style={styles.row}>
             <View style={styles.dateInputWrapper}>
               <TextInput
                 ref={dobMonthRef}
                 style={styles.input}
                 value={formData.dobMonth}
-                onChangeText={val => {
+                onChangeText={(val) => {
                   if (val.length <= 2) {
                     updateField('dobMonth', val.replace(/[^0-9]/g, ''));
-                    if (val.length === 2) {
-                      dobDayRef.current?.focus();
-                    }
+                    if (val.length === 2) dobDayRef.current?.focus();
                   }
                 }}
                 placeholder="MM"
@@ -502,12 +523,10 @@ export default function SignupScreen({ navigation }) {
                 ref={dobDayRef}
                 style={styles.input}
                 value={formData.dobDay}
-                onChangeText={val => {
+                onChangeText={(val) => {
                   if (val.length <= 2) {
                     updateField('dobDay', val.replace(/[^0-9]/g, ''));
-                    if (val.length === 2) {
-                      dobYearRef.current?.focus();
-                    }
+                    if (val.length === 2) dobYearRef.current?.focus();
                   }
                 }}
                 placeholder="DD"
@@ -525,7 +544,7 @@ export default function SignupScreen({ navigation }) {
                 ref={dobYearRef}
                 style={styles.input}
                 value={formData.dobYear}
-                onChangeText={val => {
+                onChangeText={(val) => {
                   if (val.length <= 4) {
                     updateField('dobYear', val.replace(/[^0-9]/g, ''));
                   }
@@ -550,7 +569,7 @@ export default function SignupScreen({ navigation }) {
             ref={passwordRef}
             style={styles.input}
             value={formData.password}
-            onChangeText={val => updateField('password', val)}
+            onChangeText={(val) => updateField('password', val)}
             placeholder="Enter password"
             placeholderTextColor="#6B7280"
             secureTextEntry
@@ -570,7 +589,7 @@ export default function SignupScreen({ navigation }) {
             ref={confirmPasswordRef}
             style={styles.input}
             value={formData.confirmPassword}
-            onChangeText={val => updateField('confirmPassword', val)}
+            onChangeText={(val) => updateField('confirmPassword', val)}
             placeholder="Re-enter password"
             placeholderTextColor="#6B7280"
             secureTextEntry
@@ -592,15 +611,12 @@ export default function SignupScreen({ navigation }) {
           )}
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={styles.linkButton}
-          onPress={() => navigation.goBack()}
-        >
+        <TouchableOpacity style={styles.linkButton} onPress={() => navigation.goBack()}>
           <Text style={styles.linkText}>
             Already have an account? <Text style={styles.linkTextBold}>Log In</Text>
           </Text>
         </TouchableOpacity>
-      </View>
+      </CardWrapper>
     </ScrollView>
   );
 }
@@ -704,13 +720,14 @@ const styles = StyleSheet.create({
         paddingRight: 8,
         backgroundColor: '#030712',
         borderWidth: 0,
-        outline: 'none',
+
+        // ✅ Long-form only (no shorthand `outline`)
+        outlineStyle: 'none',
+        outlineColor: 'transparent',
+        outlineWidth: 0,
       },
       default: {},
     }),
-  },
-  pickerItem: {
-    fontSize: 16,
   },
   button: {
     backgroundColor: '#2563EB',

@@ -40,15 +40,39 @@ export default function LoginScreen({ navigation }) {
     }
   };
 
+  // Web-only: use a real <form> to satisfy browser password heuristics.
+  // Native: just use a View.
+  const CardWrapper = Platform.OS === 'web' ? 'form' : View;
+
+  const cardWrapperProps =
+    Platform.OS === 'web'
+      ? {
+          onSubmit: (e) => {
+            e.preventDefault();
+            handleLogin();
+          },
+          noValidate: true,
+          // helps with autofill + password managers
+          autoComplete: 'on',
+        }
+      : {};
+
   return (
     <View style={styles.outerContainer}>
       <ScrollView contentContainerStyle={styles.container}>
-        <View style={styles.card}>
+        <CardWrapper style={styles.card} {...cardWrapperProps}>
+          {/* Web-only hidden submit so Enter triggers form submit */}
+          {Platform.OS === 'web' && (
+            <button type="submit" style={{ display: 'none' }} aria-hidden="true" />
+          )}
+
           <Text style={styles.title}>Welcome Back</Text>
           <Text style={styles.subtitle}>Sign in to continue</Text>
 
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>Email<Text style={styles.required}>*</Text></Text>
+            <Text style={styles.label}>
+              Email<Text style={styles.required}>*</Text>
+            </Text>
             <TextInput
               style={styles.input}
               value={email}
@@ -63,7 +87,9 @@ export default function LoginScreen({ navigation }) {
           </View>
 
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>Password<Text style={styles.required}>*</Text></Text>
+            <Text style={styles.label}>
+              Password<Text style={styles.required}>*</Text>
+            </Text>
             <TextInput
               style={styles.input}
               value={password}
@@ -71,7 +97,8 @@ export default function LoginScreen({ navigation }) {
               placeholder="Enter password"
               placeholderTextColor="#6B7280"
               secureTextEntry
-              autoComplete="password"
+              // For web specifically, Chrome likes "current-password"
+              autoComplete={Platform.OS === 'web' ? 'current-password' : 'password'}
               textContentType="password"
             />
           </View>
@@ -88,15 +115,12 @@ export default function LoginScreen({ navigation }) {
             )}
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={styles.linkButton}
-            onPress={() => navigation.navigate('Signup')}
-          >
+          <TouchableOpacity style={styles.linkButton} onPress={() => navigation.navigate('Signup')}>
             <Text style={styles.linkText}>
               Don't have an account? <Text style={styles.linkTextBold}>Sign Up</Text>
             </Text>
           </TouchableOpacity>
-        </View>
+        </CardWrapper>
       </ScrollView>
     </View>
   );

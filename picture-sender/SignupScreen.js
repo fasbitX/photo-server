@@ -20,6 +20,7 @@ export default function SignupScreen({ navigation }) {
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
+    userName: '@',
     streetAddress: '',
     city: '',
     state: 'VT',
@@ -38,6 +39,7 @@ export default function SignupScreen({ navigation }) {
   // Refs for tab navigation (web only)
   const firstNameRef = useRef(null);
   const lastNameRef = useRef(null);
+  const userNameRef = useRef(null);
   const streetAddressRef = useRef(null);
   const cityRef = useRef(null);
   const zipRef = useRef(null);
@@ -58,11 +60,28 @@ export default function SignupScreen({ navigation }) {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
+  const handleUserNameChange = (value) => {
+    // Always ensure it starts with @
+    if (!value.startsWith('@')) {
+      value = '@' + value.replace(/^@+/, '');
+    }
+    
+    // Remove any @ symbols that aren't at the beginning
+    if (value.length > 1) {
+      value = '@' + value.slice(1).replace(/@/g, '');
+    }
+    
+    // Limit to 21 characters and allow alphanumeric, underscore, and special chars (no @)
+    const cleaned = value.slice(0, 21).replace(/[^@a-zA-Z0-9_#$%^&*()\-+=.]/g, '');
+    updateField('userName', cleaned);
+  };
+
   const handleSignup = async () => {
     // Validation
     const requiredFields = [
       'firstName',
       'lastName',
+      'userName',
       'streetAddress',
       'city',
       'state',
@@ -80,6 +99,17 @@ export default function SignupScreen({ navigation }) {
     const missingFields = requiredFields.filter(field => !formData[field]);
     if (missingFields.length > 0) {
       Alert.alert('Error', 'Please fill in all required fields');
+      return;
+    }
+
+    // Validate username
+    if (formData.userName.length < 2) {
+      Alert.alert('Error', 'Username must be at least 2 characters (including @)');
+      return;
+    }
+
+    if (!/^@[a-zA-Z0-9_#$%^&*()\-+=.]{1,20}$/.test(formData.userName)) {
+      Alert.alert('Error', 'Username must start with @ and can contain letters, numbers, and special characters (#$%^&*()-+=_.)');
       return;
     }
 
@@ -143,12 +173,14 @@ export default function SignupScreen({ navigation }) {
         [{ text: 'OK', onPress: () => navigation.navigate('Login') }]
       );
     } else {
-      // Check if error is about already registered email or phone
+      // Check if error is about already registered email, phone, or username
       const errorMsg = result.error || 'Please try again';
       const isAlreadyRegistered = 
         errorMsg.toLowerCase().includes('already registered') ||
         errorMsg.toLowerCase().includes('email already') ||
-        errorMsg.toLowerCase().includes('phone number already');
+        errorMsg.toLowerCase().includes('phone number already') ||
+        errorMsg.toLowerCase().includes('username already') ||
+        errorMsg.toLowerCase().includes('user_name already');
       
       if (isAlreadyRegistered) {
         Alert.alert(
@@ -214,10 +246,32 @@ export default function SignupScreen({ navigation }) {
               placeholderTextColor="#6B7280"
               textContentType="familyName"
               autoComplete="name-family"
-              onSubmitEditing={() => streetAddressRef.current?.focus()}
+              onSubmitEditing={() => userNameRef.current?.focus()}
               blurOnSubmit={false}
             />
           </View>
+        </View>
+
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>
+            Username<Text style={styles.required}>*</Text>
+          </Text>
+          <TextInput
+            ref={userNameRef}
+            style={styles.input}
+            value={formData.userName}
+            onChangeText={handleUserNameChange}
+            placeholder="@username"
+            placeholderTextColor="#6B7280"
+            autoCapitalize="none"
+            autoCorrect={false}
+            maxLength={21}
+            onSubmitEditing={() => streetAddressRef.current?.focus()}
+            blurOnSubmit={false}
+          />
+          <Text style={styles.helpText}>
+            Must start with @ and can contain letters, numbers, and special characters (#$%^&*()-+=_.)
+          </Text>
         </View>
 
         <View style={styles.inputGroup}>
@@ -263,9 +317,9 @@ export default function SignupScreen({ navigation }) {
             </Text>
             <View style={styles.pickerContainer}>
               <Picker
-                selectedValue={formData.gender}
-                onValueChange={val => updateField('gender', val)}
-                style={[styles.picker, !formData.gender && styles.pickerPlaceholder]}
+                selectedValue={formData.state}
+                onValueChange={val => updateField('state', val)}
+                style={[styles.picker, !formData.state && styles.pickerPlaceholder]}
                 dropdownIconColor='#6B7280'
                 >
 
@@ -546,7 +600,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#111827',
     padding: 16,
     paddingVertical: 40,
-    alignItems: 'center', // Center the card
+    alignItems: 'center',
   },
   card: {
     backgroundColor: '#020617',
@@ -555,7 +609,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#1F2937',
     width: '100%',
-    maxWidth: 400, // ADDED: Max width of 400px (4 inches)
+    maxWidth: 400,
   },
   title: {
     fontSize: 28,
@@ -592,11 +646,15 @@ const styles = StyleSheet.create({
     ...Platform.select({
       web: {
         outlineStyle: 'none',
-        // WebkitTextFillColor: '#FFFFFF',
         WebkitBoxShadow: '0 0 0px 1000px #030712 inset',
       },
       default: {},
     }),
+  },
+  helpText: {
+    fontSize: 11,
+    color: '#6B7280',
+    marginTop: 4,
   },
   row: {
     flexDirection: 'row',

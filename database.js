@@ -528,7 +528,7 @@ async function addContact({ userId, contactUserId, nickname = null }) {
     DO UPDATE SET nickname = COALESCE(EXCLUDED.nickname, contacts.nickname)
     RETURNING user_id, contact_user_id, nickname, added_date
     `,
-    [uid, cid, nickname]
+    [uid, cid, nickname, addedDateMs] 
   );
   return rows[0];
 }

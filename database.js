@@ -520,6 +520,8 @@ async function addContact({ userId, contactUserId, nickname = null }) {
   const cid = Number(contactUserId);
   if (!uid || !cid) throw new Error('Missing userId/contactUserId');
 
+  const addedDateMs = Date.now(); // <-- MUST EXIST with this exact name
+
   const { rows } = await pool.query(
     `
     INSERT INTO contacts (user_id, contact_user_id, nickname, added_date)
@@ -528,10 +530,12 @@ async function addContact({ userId, contactUserId, nickname = null }) {
     DO UPDATE SET nickname = COALESCE(EXCLUDED.nickname, contacts.nickname)
     RETURNING user_id, contact_user_id, nickname, added_date
     `,
-    [uid, cid, nickname, addedDateMs] 
+    [uid, cid, nickname, addedDateMs] // <-- MUST MATCH name above
   );
+
   return rows[0];
 }
+
 
 async function removeContact({ userId, contactUserId }) {
   const uid = Number(userId);

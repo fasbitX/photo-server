@@ -454,6 +454,125 @@ async function logoutSession(sessionToken) {
 }
 
 /* ──────────────────────────────────────────────
+ *  CONTACTS OPERATIONS
+ * ────────────────────────────────────────────── */
+
+async function searchUsersByIdentifier({ type, value, excludeUserId, limit = 20 }) {
+  const q = String(value || '').trim();
+  if (!q) return [];
+
+  const exId = Number.isFinite(Number(excludeUserId)) ? Number(excludeUserId) : -1;
+
+  if (!['phone', 'email', 'username'].includes(type)) {
+    throw new Error('Invalid search type');
+  }
+
+  if (type === 'phone') {
+    const digits = q.replace(/\D/g, '');
+    if (!digits) return [];
+
+    const { rows } = await pool.query(
+      `
+      SELECT id, user_name, first_name, last_name, email, phone
+      FROM users
+      WHERE id <> $1
+        AND regexp_replace(COALESCE(phone,''), '\\D', '', 'g') LIKE $2
+      ORDER BY id DESC
+      LIMIT $3
+      `,
+      [exId, `%${digits}%`, limit]
+    );
+    return rows;
+  }
+
+  if (type === 'email') {
+    const { rows } = await pool.query(
+      `
+      SELECT id, user_name, first_name, last_name, email, phone
+      FROM users
+      WHERE id <> $1
+        AND COALESCE(email,'') ILIKE $2
+      ORDER BY id DESC
+      LIMIT $3
+      `,
+      [exId, `%${q}%`, limit]
+    );
+    return rows;
+  }
+
+  // username
+  const { rows } = await pool.query(
+    `
+    SELECT id, user_name, first_name, last_name, email, phone
+    FROM users
+    WHERE id <> $1
+      AND COALESCE(user_name,'') ILIKE $2
+    ORDER BY id DESC
+    LIMIT $3
+    `,
+    [exId, `%${q}%`, limit]
+  );
+  return rows;
+}
+
+async function addContact({ userId, contactUserId, nickname = null }) {
+  const uid = Number(userId);
+  const cid = Number(contactUserId);
+  if (!uid || !cid) throw new Error('Missing userId/contactUserId');
+
+  const { rows } = await pool.query(
+    `
+    INSERT INTO contacts (user_id, contact_user_id, nickname, added_date)
+    VALUES ($1, $2, $3, NOW())
+    ON CONFLICT (user_id, contact_user_id)
+    DO UPDATE SET nickname = COALESCE(EXCLUDED.nickname, contacts.nickname)
+    RETURNING user_id, contact_user_id, nickname, added_date
+    `,
+    [uid, cid, nickname]
+  );
+  return rows[0];
+}
+
+async function removeContact({ userId, contactUserId }) {
+  const uid = Number(userId);
+  const cid = Number(contactUserId);
+  if (!uid || !cid) throw new Error('Missing userId/contactUserId');
+
+  await pool.query(
+    `DELETE FROM contacts WHERE user_id = $1 AND contact_user_id = $2`,
+    [uid, cid]
+  );
+  return true;
+}
+
+async function listContacts({ userId, limit = 200 }) {
+  const uid = Number(userId);
+  if (!uid) throw new Error('Missing userId');
+
+  const { rows } = await pool.query(
+    `
+    SELECT
+      c.contact_user_id AS id,
+      u.user_name,
+      u.first_name,
+      u.last_name,
+      u.email,
+      u.phone,
+      c.nickname,
+      c.added_date
+    FROM contacts c
+    JOIN users u ON u.id = c.contact_user_id
+    WHERE c.user_id = $1
+    ORDER BY c.added_date DESC
+    LIMIT $2
+    `,
+    [uid, limit]
+  );
+
+  return rows;
+}
+
+/* ──────────────────────────────────────────────
  *  PHOTO OPERATIONS
  * ────────────────────────────────────────────── */
 
@@ -522,4 +641,8 @@ module.exports = {
   logoutSession,
   savePhoto,
   getUserPhotos,
+  searchUsersByIdentifier,
+  addContact,
+  removeContact,
+  listContacts,
 };

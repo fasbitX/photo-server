@@ -6,6 +6,10 @@ const {
   createUser,
   findUserById,
   createLoginSession,
+  searchUsersByIdentifier,
+  addContact,
+  removeContact,
+  listContacts,
 } = require('./database');
 const {
   sendVerificationEmail,
@@ -219,6 +223,77 @@ function registerMobileApiRoutes(app) {
       res.status(500).json({ error: 'Failed to get user data' });
     }
   });
+
+  // ──────────────────────────────────────────────
+    // CONTACTS (MOBILE)
+    // ──────────────────────────────────────────────
+
+    app.post('/api/mobile/contacts/search', express.json(), async (req, res) => {
+    try {
+        const { requesterId, type, value } = req.body || {};
+        if (!requesterId) return res.status(400).json({ error: 'Missing requesterId' });
+        if (!type || !value) return res.status(400).json({ error: 'Missing type/value' });
+
+        const results = await searchUsersByIdentifier({
+        type,
+        value,
+        excludeUserId: requesterId,
+        limit: 25,
+        });
+
+        res.json({ results });
+    } catch (err) {
+        console.error('contacts/search error:', err);
+        res.status(500).json({ error: 'Search failed' });
+    }
+    });
+
+    app.post('/api/mobile/contacts/list', express.json(), async (req, res) => {
+    try {
+        const { requesterId } = req.body || {};
+        if (!requesterId) return res.status(400).json({ error: 'Missing requesterId' });
+
+        const contacts = await listContacts({ userId: requesterId, limit: 200 });
+        res.json({ contacts });
+    } catch (err) {
+        console.error('contacts/list error:', err);
+        res.status(500).json({ error: 'List failed' });
+    }
+    });
+
+    app.post('/api/mobile/contacts/add', express.json(), async (req, res) => {
+    try {
+        const { requesterId, contactUserId, nickname } = req.body || {};
+        if (!requesterId) return res.status(400).json({ error: 'Missing requesterId' });
+        if (!contactUserId) return res.status(400).json({ error: 'Missing contactUserId' });
+
+        const added = await addContact({
+        userId: requesterId,
+        contactUserId,
+        nickname: nickname ? String(nickname).trim() : null,
+        });
+
+        res.json({ ok: true, added });
+    } catch (err) {
+        console.error('contacts/add error:', err);
+        res.status(500).json({ error: 'Add failed' });
+    }
+    });
+
+    app.post('/api/mobile/contacts/remove', express.json(), async (req, res) => {
+    try {
+        const { requesterId, contactUserId } = req.body || {};
+        if (!requesterId) return res.status(400).json({ error: 'Missing requesterId' });
+        if (!contactUserId) return res.status(400).json({ error: 'Missing contactUserId' });
+
+        await removeContact({ userId: requesterId, contactUserId });
+        res.json({ ok: true });
+    } catch (err) {
+        console.error('contacts/remove error:', err);
+        res.status(500).json({ error: 'Remove failed' });
+    }
+ });
+
 }
 
 module.exports = { registerMobileApiRoutes };

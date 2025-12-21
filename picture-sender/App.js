@@ -25,10 +25,11 @@ import { CLIENT_ID, SECRET_KEY_BASE64 } from './config';
 import LoginScreen from './LoginScreen';
 import SignupScreen from './SignupScreen';
 import DashboardScreen from './DashboardScreen';
+import ContactScreen from './ContactScreen';
 
 const Stack = createNativeStackNavigator();
 
-// Your existing MainScreen (photo upload functionality)
+// MainScreen (photo upload functionality)
 function PhotoUploadScreen() {
   const [images, setImages] = useState([]);
   const [sending, setSending] = useState(false);
@@ -312,6 +313,7 @@ function AppNavigator() {
         <>
           <Stack.Screen name="Dashboard" component={DashboardScreen} />
           <Stack.Screen name="PhotoUpload" component={PhotoUploadScreen} />
+          <Stack.Screen name="Contact" component={ContactScreen} />
         </>
       ) : (
         <>

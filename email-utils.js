@@ -48,7 +48,7 @@ async function sendVerificationEmail(email, verificationToken, req) {
             .container { max-width: 600px; margin: 0 auto; padding: 20px; }
             .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; }
             .content { background: #f9f9f9; padding: 30px; }
-            .button { display: inline-block; padding: 12px 30px; background: #667eea; color: white; text-decoration: none; border-radius: 5px; margin: 20px 0; }
+            .button { display: inline-block; padding: 12px 30px; background: #667eea; color: white; text-decoration: none; border-radius: 5px; margin: 20px 0; border: 2px solid white; font-weight: bold; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
             .footer { text-align: center; padding: 20px; font-size: 12px; color: #999; }
           </style>
         </head>
@@ -121,7 +121,7 @@ async function sendPasswordResetEmail(email, resetToken, req) {
             .container { max-width: 600px; margin: 0 auto; padding: 20px; }
             .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; }
             .content { background: #f9f9f9; padding: 30px; }
-            .button { display: inline-block; padding: 12px 30px; background: #667eea; color: white; text-decoration: none; border-radius: 5px; margin: 20px 0; }
+            .button { display: inline-block; padding: 12px 30px; background: #667eea; color: white; text-decoration: none; border-radius: 5px; margin: 20px 0; border: 2px solid white; font-weight: bold; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
             .footer { text-align: center; padding: 20px; font-size: 12px; color: #999; }
             .warning { background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; }
           </style>

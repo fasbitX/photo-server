@@ -143,7 +143,36 @@ export default function SignupScreen({ navigation }) {
         [{ text: 'OK', onPress: () => navigation.navigate('Login') }]
       );
     } else {
-      Alert.alert('Signup Failed', result.error || 'Please try again');
+      // Check if error is about already registered email or phone
+      const errorMsg = result.error || 'Please try again';
+      const isAlreadyRegistered = 
+        errorMsg.toLowerCase().includes('already registered') ||
+        errorMsg.toLowerCase().includes('email already') ||
+        errorMsg.toLowerCase().includes('phone number already');
+      
+      if (isAlreadyRegistered) {
+        Alert.alert(
+          'Account Already Exists',
+          errorMsg,
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { 
+              text: 'Reset Password', 
+              onPress: () => {
+                // Navigate to login then they can use forgot password
+                navigation.navigate('Login');
+              }
+            },
+            { 
+              text: 'Log In', 
+              style: 'default',
+              onPress: () => navigation.navigate('Login')
+            },
+          ]
+        );
+      } else {
+        Alert.alert('Signup Failed', errorMsg);
+      }
     }
   };
 

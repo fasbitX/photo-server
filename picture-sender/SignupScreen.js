@@ -263,11 +263,12 @@ export default function SignupScreen({ navigation }) {
             </Text>
             <View style={styles.pickerContainer}>
               <Picker
-                selectedValue={formData.state}
-                onValueChange={val => updateField('state', val)}
-                style={styles.picker}
-                dropdownIconColor="#9CA3AF"
-              >
+                selectedValue={formData.gender}
+                onValueChange={val => updateField('gender', val)}
+                style={[styles.picker, !formData.gender && styles.pickerPlaceholder]}
+                dropdownIconColor='#6B7280'
+                >
+
                 <Picker.Item label="VT" value="VT" />
                 <Picker.Item label="NH" value="NH" />
                 <Picker.Item label="NY" value="NY" />

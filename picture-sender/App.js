@@ -313,7 +313,7 @@ function AppNavigator() {
         <>
           <Stack.Screen name="Dashboard" component={DashboardScreen} />
           <Stack.Screen name="PhotoUpload" component={PhotoUploadScreen} />
-          <Stack.Screen name="Contact" component={ContactScreen} />
+          <Stack.Screen name="Contacts" component={ContactScreen} />
         </>
       ) : (
         <>

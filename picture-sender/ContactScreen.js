@@ -76,8 +76,9 @@ export default function ContactScreen({ navigation }) {
   const abortRef = useRef(null);
 
   const canSearch = useMemo(() => {
-    const q = normalizeNoAt(value);
-    return q.length >= MIN_CHARS;
+    const qText = normalizeNoAt(value);
+    const qDigits = normalizePhone(value);
+    return qText.length >= MIN_CHARS || qDigits.length >= MIN_CHARS;
   }, [value]);
 
   const loadSaved = useCallback(async () => {
@@ -141,43 +142,16 @@ export default function ContactScreen({ navigation }) {
       setSearching(true);
       setMode('search');
 
-      const safeSearchOne = async (type, v) => {
-        if (!v || v.length < MIN_CHARS) return [];
-
-        console.log('[contacts/search] sending', { type, value: v });
-
-        try {
-            const data = await postJson(
-            `${base}/api/mobile/contacts/search`,
-            { requesterId: user.id, type, value: v },
-            controller.signal
-            );
-            return Array.isArray(data?.results) ? data.results : [];
-        } catch (err) {
-            if (String(err?.name || '').includes('Abort')) return [];
-            return [];
-        }
-        };
-
-
       try {
-        // Search all three types and merge results (dedupe by id).
-        const [byPhone, byEmail, byUsername] = await Promise.all([
-          safeSearchOne('phone', qPhone),
-          safeSearchOne('email', qNoAt),
-          safeSearchOne('username', qNoAt),
-        ]);
+        const data = await postJson(
+          `${base}/api/mobile/contacts/search-any`,
+          { requesterId: user.id, q: raw },
+          controller.signal
+        );
 
         if (controller.signal.aborted) return;
 
-        const merged = [...byPhone, ...byEmail, ...byUsername];
-        const map = new Map();
-        for (const item of merged) {
-          if (item && item.id != null && !map.has(item.id)) {
-            map.set(item.id, item);
-          }
-        }
-        setResults(Array.from(map.values()));
+        setResults(Array.isArray(data?.results) ? data.results : []);
       } catch (err) {
         if (controller.signal.aborted) return;
         Alert.alert('Search', `Search failed: ${String(err.message || err)}`);

@@ -7,6 +7,7 @@ const {
   findUserById,
   createLoginSession,
   searchUsersByIdentifier,
+  searchUsersAny,
   addContact,
   removeContact,
   listContacts,
@@ -227,6 +228,28 @@ function registerMobileApiRoutes(app) {
   // ──────────────────────────────────────────────
     // CONTACTS (MOBILE)
     // ──────────────────────────────────────────────
+
+    // Unified search across phone/email/username (single request)
+    app.post('/api/mobile/contacts/search-any', express.json(), async (req, res) => {
+      try {
+        const { requesterId, q, value } = req.body || {};
+        const term = (q != null ? q : value);
+
+        if (!requesterId) return res.status(400).json({ error: 'Missing requesterId' });
+        if (!term) return res.status(400).json({ error: 'Missing search term' });
+
+        const results = await searchUsersAny({
+          value: term,
+          excludeUserId: requesterId,
+          limit: 25,
+        });
+
+        res.json({ results });
+      } catch (err) {
+        console.error('contacts/search-any error:', err);
+        res.status(500).json({ error: 'Search failed' });
+      }
+    });
 
     app.post('/api/mobile/contacts/search', express.json(), async (req, res) => {
     try {

@@ -541,6 +541,45 @@ async function searchUsersByIdentifier({ type, value, excludeUserId, limit = 20 
   return rows;
 }
 
+async function searchUsersAny({ value, excludeUserId, limit = 25 }) {
+  const raw = String(value || '').trim();
+  if (!raw) return [];
+
+  const exId = Number.isFinite(Number(excludeUserId)) ? Number(excludeUserId) : -1;
+
+  const qNoAt = raw
+    .toLowerCase()
+    .replace(/@/g, '')
+    .replace(/\s+/g, '');
+
+  const qDigits = raw.replace(/\D/g, '');
+
+  // Keep this consistent with the client gating.
+  const MIN_CHARS = 3;
+  const textLike = qNoAt.length >= MIN_CHARS ? `%${qNoAt}%` : null;
+  const digitsLike = qDigits.length >= MIN_CHARS ? `%${qDigits}%` : null;
+
+  if (!textLike && !digitsLike) return [];
+
+  const { rows } = await pool.query(
+    `
+    SELECT id, user_name, first_name, last_name, email, phone
+    FROM users
+    WHERE id <> $1
+      AND (
+        ($2 IS NOT NULL AND regexp_replace(COALESCE(phone,''), '[^0-9]', '', 'g') LIKE $2)
+        OR ($3 IS NOT NULL AND replace(lower(COALESCE(user_name,'')), '@', '') LIKE $3)
+        OR ($3 IS NOT NULL AND replace(lower(COALESCE(email,'')), '@', '') LIKE $3)
+      )
+    ORDER BY id DESC
+    LIMIT $4
+    `,
+    [exId, digitsLike, textLike, limit]
+  );
+
+  return rows;
+}
+
 async function addContact({ userId, contactUserId, nickname = null }) {
   const uid = Number(userId);
   const cid = Number(contactUserId);
@@ -672,6 +711,7 @@ module.exports = {
   savePhoto,
   getUserPhotos,
   searchUsersByIdentifier,
+  searchUsersAny,
   addContact,
   removeContact,
   listContacts,

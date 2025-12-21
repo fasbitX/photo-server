@@ -1,14 +1,55 @@
 // routes-user-dashboard.js
 const path = require('path');
 const fs = require('fs');
-const { findUserById, getTransactions } = require('./db-users');
+const { Pool } = require('pg');
+
+let pool;
+function getPool() {
+  if (!pool) {
+    pool = new Pool({
+      host: process.env.DB_HOST || 'localhost',
+      port: process.env.DB_PORT || 5432,
+      database: process.env.DB_NAME || 'text_fasbit',
+      user: process.env.DB_USER || 'text_fasbit_user',
+      password: process.env.DB_PASSWORD,
+    });
+  }
+  return pool;
+}
 
 const uploadDir = path.join(__dirname, 'uploads');
+
+/* ════════════════════════════════════════════════════════
+ *  DATABASE FUNCTIONS (PostgreSQL)
+ * ════════════════════════════════════════════════════════ */
+
+async function findUserById(userId) {
+  const pool = getPool();
+  const result = await pool.query('SELECT * FROM users WHERE id = $1', [userId]);
+  return result.rows[0] || null;
+}
+
+async function getTransactions(userId, limit = 10) {
+  const pool = getPool();
+  const result = await pool.query(
+    'SELECT * FROM transactions WHERE user_id = $1 ORDER BY transaction_date DESC LIMIT $2',
+    [userId, limit]
+  );
+  return result.rows;
+}
+
+/* ════════════════════════════════════════════════════════
+ *  MIDDLEWARE
+ * ════════════════════════════════════════════════════════ */
 
 function requireUser(req, res, next) {
   if (req.session && req.session.userId) return next();
   return res.redirect('/login');
 }
+
+/* ════════════════════════════════════════════════════════
+ *  ROUTES
+ * ════════════════════════════════════════════════════════ */
 
 function registerUserDashboardRoutes(app) {
   
@@ -121,9 +162,9 @@ function registerUserDashboardRoutes(app) {
   });
 }
 
-/* ──────────────────────────────────────────────
+/* ════════════════════════════════════════════════════════
  *  HTML TEMPLATES
- * ────────────────────────────────────────────── */
+ * ════════════════════════════════════════════════════════ */
 
 function getBaseStyles() {
   return `

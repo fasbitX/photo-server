@@ -143,23 +143,22 @@ export default function ContactScreen({ navigation }) {
 
       const safeSearchOne = async (type, v) => {
         if (!v || v.length < MIN_CHARS) return [];
+
+        console.log('[contacts/search] sending', { type, value: v });
+
         try {
-          const data = await postJson(
+            const data = await postJson(
             `${base}/api/mobile/contacts/search`,
-            {
-              requesterId: user.id,
-              type,
-              value: v,
-            },
+            { requesterId: user.id, type, value: v },
             controller.signal
-          );
-          return Array.isArray(data?.results) ? data.results : [];
+            );
+            return Array.isArray(data?.results) ? data.results : [];
         } catch (err) {
-          // If cancelled, just treat as empty
-          if (String(err?.name || '').includes('Abort')) return [];
-          return [];
+            if (String(err?.name || '').includes('Abort')) return [];
+            return [];
         }
-      };
+        };
+
 
       try {
         // Search all three types and merge results (dedupe by id).

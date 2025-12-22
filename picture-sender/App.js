@@ -29,6 +29,15 @@ import ContactScreen from './ContactScreen';
 import ContactDetailScreen from './ContactDetailScreen';
 import MessagesScreen from './MessagesScreen';
 import TextScreen from './TextScreen';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+
+export default function App() {
+  return (
+    <SafeAreaProvider>
+      {/* your existing navigation/app */}
+    </SafeAreaProvider>
+  );
+}
 
 const Stack = createNativeStackNavigator();
 

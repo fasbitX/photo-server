@@ -1,5 +1,5 @@
-// MessagesScreen.js
-import React, { useEffect, useMemo, useState } from 'react';
+// TextScreen.js
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -7,132 +7,191 @@ import {
   TouchableOpacity,
   StyleSheet,
   FlatList,
-  Dimensions,
+  KeyboardAvoidingView,
   Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from './auth';
 
-const SCREEN_WIDTH = Dimensions.get('window').width;
-const MAX_WIDTH = 288; // match DashboardScreen "4 inches" width
+const MAX_WIDTH = 288; // match DashboardScreen container width
 
-export default function MessagesScreen({ navigation }) {
+export default function TextScreen({ route, navigation }) {
+  const { contact } = route.params || {};
   const { user, serverUrl } = useAuth();
-  const [q, setQ] = useState('');
-  const [contacts, setContacts] = useState([]);
+  const insets = useSafeAreaInsets();
+
+  const [messages, setMessages] = useState([]);
+  const [conversationId, setConversationId] = useState(null);
+  const [text, setText] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const filtered = useMemo(() => {
-    const term = q.trim().toLowerCase();
-    if (!term) return contacts;
-    return contacts.filter((c) => {
-      const name = `${c.first_name || ''} ${c.last_name || ''}`.toLowerCase();
-      const email = (c.email || '').toLowerCase();
-      return name.includes(term) || email.includes(term);
-    });
-  }, [q, contacts]);
+  const timerRef = useRef(null);
+
+  const contactName =
+    `${contact?.first_name || ''} ${contact?.last_name || ''}`.trim() ||
+    contact?.email ||
+    'Chat';
+
+  // Approx header height (excluding safe-area top). Used only for iOS keyboard offset.
+  const HEADER_BAR_HEIGHT = 64;
+  const keyboardOffset = Platform.OS === 'ios' ? insets.top + HEADER_BAR_HEIGHT : 0;
+
+  const fetchThread = async () => {
+    if (!user?.id || !contact?.id || !serverUrl) return;
+    setLoading(true);
+    try {
+      const url = `${serverUrl.replace(/\/+$/, '')}/api/mobile/messages/thread`;
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          requesterId: user.id,
+          contactUserId: contact.id,
+          limit: 50,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setConversationId(data.conversationId);
+        setMessages(data.messages || []);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const load = async () => {
-      if (!user?.id || !serverUrl) return;
-      setLoading(true);
-      try {
-        const url = `${serverUrl.replace(/\/+$/, '')}/api/mobile/contacts/list`;
-        const res = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ requesterId: user.id }),
-        });
-        const data = await res.json();
-        if (res.ok && data.contacts) setContacts(data.contacts);
-      } finally {
-        setLoading(false);
-      }
+    fetchThread();
+
+    // simple polling MVP (only while screen mounted)
+    timerRef.current = setInterval(fetchThread, 2500);
+
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
     };
-    load();
-  }, [user?.id, serverUrl]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, contact?.id, serverUrl]);
+
+  const send = async () => {
+    const body = text.trim();
+    if (!body) return;
+    if (!user?.id || !contact?.id || !serverUrl) return;
+
+    setText('');
+
+    // optimistic insert
+    const optimistic = {
+      id: `tmp-${Date.now()}`,
+      sender_id: user.id,
+      recipient_id: contact.id,
+      content: body,
+      message_type: 'text',
+      sent_date: Date.now(),
+    };
+    setMessages((prev) => [optimistic, ...prev]);
+
+    try {
+      const url = `${serverUrl.replace(/\/+$/, '')}/api/mobile/messages/send`;
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          senderId: user.id,
+          recipientId: contact.id,
+          content: body,
+        }),
+      });
+      const data = await res.json();
+
+      if (res.ok && data.message) {
+        await fetchThread(); // reconcile optimistic
+      }
+    } catch (e) {
+      await fetchThread(); // reconcile on error too
+    }
+  };
 
   return (
-    <View style={styles.outerContainer}>
-      <View style={styles.container}>
-        {/* Header (match Dashboard style) */}
-        <View style={styles.header}>
-          <TouchableOpacity
-            onPress={() => navigation.goBack()}
-            style={styles.backButton}
-            activeOpacity={0.6}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            <Ionicons name="chevron-back" size={28} color="#9CA3AF" />
-          </TouchableOpacity>
+    <KeyboardAvoidingView
+      style={styles.kav}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={keyboardOffset}
+    >
+      <View style={styles.outerContainer}>
+        <View style={styles.container}>
+          {/* Dashboard-style header (safe-area aware) */}
+          <View style={[styles.header, { paddingTop: insets.top + 14 }]}>
+            <TouchableOpacity
+              onPress={() => navigation.goBack()}
+              style={styles.backButton}
+              activeOpacity={0.6}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              accessibilityRole="button"
+              accessibilityLabel="Back"
+            >
+              <Ionicons name="chevron-back" size={28} color="#9CA3AF" />
+            </TouchableOpacity>
 
-          <Text style={styles.headerTitle}>Messages</Text>
+            <Text style={styles.headerTitle} numberOfLines={1}>
+              {contactName}
+            </Text>
 
-          {/* spacer to keep title visually centered */}
-          <View style={styles.headerRightSpacer} />
-        </View>
+            {/* spacer to keep title centered */}
+            <View style={styles.headerRightSpacer} />
+          </View>
 
-        {/* Content (match Dashboard padding) */}
-        <View style={styles.content}>
-          <TextInput
-            value={q}
-            onChangeText={setQ}
-            placeholder="Search contacts..."
-            placeholderTextColor="#9CA3AF"
-            style={styles.search}
-          />
-
-          <FlatList
-            data={filtered}
-            keyExtractor={(item) => String(item.id)}
-            keyboardShouldPersistTaps="handled"
-            contentContainerStyle={{ paddingBottom: 24 }}
-            ListEmptyComponent={
-              <Text style={styles.empty}>
-                {loading ? 'Loading...' : 'No contacts yet.'}
-              </Text>
-            }
-            renderItem={({ item }) => {
-              const name =
-                `${item.first_name || ''} ${item.last_name || ''}`.trim() ||
-                item.email ||
-                'Contact';
-
-              return (
-                <TouchableOpacity
-                  style={styles.row}
-                  onPress={() => navigation.navigate('Text', { contact: item })}
-                  activeOpacity={0.8}
-                >
-                  <View style={styles.avatar}>
-                    <Text style={styles.avatarText}>
-                      {name.slice(0, 1).toUpperCase()}
-                    </Text>
+          {/* Content area */}
+          <View style={styles.content}>
+            <FlatList
+              style={{ flex: 1 }}
+              data={messages}
+              inverted
+              keyExtractor={(item) => String(item.id)}
+              contentContainerStyle={{ paddingVertical: 12 }}
+              keyboardShouldPersistTaps="handled"
+              ListEmptyComponent={
+                <Text style={styles.empty}>
+                  {loading ? 'Loading...' : 'No messages yet.'}
+                </Text>
+              }
+              renderItem={({ item }) => {
+                const mine = Number(item.sender_id) === Number(user?.id);
+                return (
+                  <View style={[styles.bubble, mine ? styles.mine : styles.theirs]}>
+                    <Text style={styles.bubbleText}>{item.content || ''}</Text>
                   </View>
+                );
+              }}
+            />
 
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.name}>{name}</Text>
-                    {!!item.email && <Text style={styles.sub}>{item.email}</Text>}
-                  </View>
-
-                  <Ionicons
-                    name="chevron-forward"
-                    size={18}
-                    color="#6B7280"
-                    style={{ marginLeft: 8 }}
-                  />
+            {/* Safe-area padding keeps composer above Android nav bar; keyboard avoidance handled by KAV */}
+            <View style={[styles.composerWrap, { paddingBottom: Math.max(insets.bottom, 10) }]}>
+              <View style={styles.composer}>
+                <TextInput
+                  value={text}
+                  onChangeText={setText}
+                  placeholder="Type a message..."
+                  placeholderTextColor="#9CA3AF"
+                  style={styles.input}
+                  multiline
+                />
+                <TouchableOpacity style={styles.sendBtn} onPress={send} activeOpacity={0.85}>
+                  <Text style={styles.sendText}>Send</Text>
                 </TouchableOpacity>
-              );
-            }}
-          />
+              </View>
+            </View>
+          </View>
         </View>
       </View>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  // Match Dashboard outer shell
+  kav: { flex: 1 },
+
+  // Dashboard-style outer shell
   outerContainer: {
     flex: 1,
     backgroundColor: '#000000',
@@ -145,70 +204,94 @@ const styles = StyleSheet.create({
     backgroundColor: '#111827',
   },
 
-  // Match Dashboard header bar
+  // Dashboard-style header bar
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 20,
-    paddingTop: 50,
+    paddingHorizontal: 20,
+    paddingBottom: 14,
     backgroundColor: '#020617',
     borderBottomWidth: 1,
     borderBottomColor: '#1F2937',
   },
   backButton: {
     padding: 12,
-    marginLeft: -12, // balances the padding so title feels centered
+    marginLeft: -12,
   },
   headerTitle: {
-    fontSize: 20,
+    flex: 1,
+    textAlign: 'center',
+    fontSize: 18,
     fontWeight: 'bold',
     color: '#FFFFFF',
+    paddingHorizontal: 6,
   },
   headerRightSpacer: {
-    width: 28 + 24, // approx back icon area width to center title
+    width: 28 + 24,
   },
 
-  // Match Dashboard content padding
+  // Content matches Dashboard padding
   content: {
     padding: 16,
     flex: 1,
   },
 
-  // Inputs/rows styled to match Dashboard card feel
-  search: {
-    backgroundColor: '#0B1220',
-    borderWidth: 1,
-    borderColor: '#1F2937',
-    borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    color: '#FFF',
-    marginBottom: 12,
+  empty: {
+    color: '#9CA3AF',
+    textAlign: 'center',
+    paddingTop: 18,
   },
 
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    borderRadius: 12,
+  bubble: {
+    maxWidth: '80%',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 16,
+    marginVertical: 6,
     borderWidth: 1,
     borderColor: '#1F2937',
+  },
+  mine: {
+    alignSelf: 'flex-end',
+    backgroundColor: '#1D4ED8',
+  },
+  theirs: {
+    alignSelf: 'flex-start',
     backgroundColor: '#020617',
-    marginBottom: 12,
-    gap: 12,
   },
+  bubbleText: { color: '#FFF', fontSize: 14 },
 
-  avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 999,
-    backgroundColor: '#2563EB',
-    alignItems: 'center',
-    justifyContent: 'center',
+  composerWrap: {
+    // paddingBottom is applied dynamically via insets
   },
-  avatarText: { color: '#FFF', fontWeight: '800' },
-  name: { color: '#FFF', fontSize: 16, fontWeight: '600' },
-  sub: { color: '#9CA3AF', fontSize: 12, marginTop: 2 },
-  empty: { color: '#9CA3AF', paddingTop: 24, textAlign: 'center' },
+  composer: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#1F2937',
+    backgroundColor: '#0B1220',
+    padding: 12,
+    borderRadius: 16,
+    marginTop: 10,
+  },
+  input: {
+    flex: 1,
+    color: '#FFF',
+    backgroundColor: '#020617',
+    borderWidth: 1,
+    borderColor: '#1F2937',
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    maxHeight: 120,
+  },
+  sendBtn: {
+    backgroundColor: '#2563EB',
+    borderRadius: 999,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  sendText: { color: '#FFF', fontWeight: '800' },
 });

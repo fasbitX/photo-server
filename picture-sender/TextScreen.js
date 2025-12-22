@@ -1,9 +1,23 @@
 // TextScreen.js
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, FlatList, KeyboardAvoidingView, Platform } from 'react-native';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  FlatList,
+  KeyboardAvoidingView,
+  Platform,
+  Dimensions,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from './auth';
 
-export default function TextScreen({ route }) {
+const SCREEN_WIDTH = Dimensions.get('window').width;
+const MAX_WIDTH = 288; // match DashboardScreen container width
+
+export default function TextScreen({ route, navigation }) {
   const { contact } = route.params || {};
   const { user, serverUrl } = useAuth();
 
@@ -27,7 +41,11 @@ export default function TextScreen({ route }) {
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ requesterId: user.id, contactUserId: contact.id, limit: 50 }),
+        body: JSON.stringify({
+          requesterId: user.id,
+          contactUserId: contact.id,
+          limit: 50,
+        }),
       });
       const data = await res.json();
       if (res.ok) {
@@ -74,93 +92,180 @@ export default function TextScreen({ route }) {
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ senderId: user.id, recipientId: contact.id, content: body }),
+        body: JSON.stringify({
+          senderId: user.id,
+          recipientId: contact.id,
+          content: body,
+        }),
       });
       const data = await res.json();
 
       if (res.ok && data.message) {
-        // replace optimistic by refetch (simple + safe)
-        await fetchThread();
+        await fetchThread(); // reconcile optimistic
       }
-    } catch {
-      // if it fails, refetch to reconcile
-      await fetchThread();
+    } catch (e) {
+      await fetchThread(); // reconcile on error too
     }
   };
 
   return (
     <KeyboardAvoidingView
-        style={styles.container}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
-        >
-        <View style={styles.webFrame}>
-            <Text style={styles.header}>{contactName}</Text>
+      style={styles.kav}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
+    >
+      <View style={styles.outerContainer}>
+        <View style={styles.container}>
+          {/* Dashboard-style header */}
+          <View style={styles.header}>
+            <TouchableOpacity
+              onPress={() => navigation.goBack()}
+              style={styles.backButton}
+              activeOpacity={0.6}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              accessibilityRole="button"
+              accessibilityLabel="Back"
+            >
+              <Ionicons name="chevron-back" size={28} color="#9CA3AF" />
+            </TouchableOpacity>
 
+            <Text style={styles.headerTitle} numberOfLines={1}>
+              {contactName}
+            </Text>
+
+            {/* spacer to keep title centered */}
+            <View style={styles.headerRightSpacer} />
+          </View>
+
+          {/* Content area */}
+          <View style={styles.content}>
             <FlatList
-            data={messages}
-            inverted
-            keyExtractor={(item) => String(item.id)}
-            contentContainerStyle={{ paddingVertical: 12 }}
-            ListEmptyComponent={
+              style={{ flex: 1 }}
+              data={messages}
+              inverted
+              keyExtractor={(item) => String(item.id)}
+              contentContainerStyle={{ paddingVertical: 12 }}
+              keyboardShouldPersistTaps="handled"
+              ListEmptyComponent={
                 <Text style={styles.empty}>
-                {loading ? 'Loading...' : 'No messages yet.'}
+                  {loading ? 'Loading...' : 'No messages yet.'}
                 </Text>
-            }
-            renderItem={({ item }) => {
+              }
+              renderItem={({ item }) => {
                 const mine = Number(item.sender_id) === Number(user?.id);
                 return (
-                <View style={[styles.bubble, mine ? styles.mine : styles.theirs]}>
+                  <View style={[styles.bubble, mine ? styles.mine : styles.theirs]}>
                     <Text style={styles.bubbleText}>{item.content || ''}</Text>
-                </View>
+                  </View>
                 );
-            }}
+              }}
             />
 
             <View style={styles.composer}>
-            <TextInput
+              <TextInput
                 value={text}
                 onChangeText={setText}
                 placeholder="Type a message..."
                 placeholderTextColor="#9CA3AF"
                 style={styles.input}
                 multiline
-            />
-            <TouchableOpacity style={styles.sendBtn} onPress={send} activeOpacity={0.85}>
+              />
+              <TouchableOpacity style={styles.sendBtn} onPress={send} activeOpacity={0.85}>
                 <Text style={styles.sendText}>Send</Text>
-            </TouchableOpacity>
+              </TouchableOpacity>
             </View>
+          </View>
         </View>
+      </View>
     </KeyboardAvoidingView>
-
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#111827', paddingTop: 50 },
-  header: { color: '#FFF', fontSize: 18, fontWeight: '700', paddingHorizontal: 16, paddingBottom: 10 },
-  empty: { color: '#9CA3AF', textAlign: 'center', paddingTop: 18 },
+  // KeyboardAvoiding wrapper
+  kav: { flex: 1 },
+
+  // Dashboard-style outer shell
+  outerContainer: {
+    flex: 1,
+    backgroundColor: '#000000',
+    alignItems: 'center',
+  },
+  container: {
+    flex: 1,
+    width: '100%',
+    maxWidth: MAX_WIDTH,
+    backgroundColor: '#111827',
+  },
+
+  // Dashboard-style header bar
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    paddingTop: 50,
+    backgroundColor: '#020617',
+    borderBottomWidth: 1,
+    borderBottomColor: '#1F2937',
+  },
+  backButton: {
+    padding: 12,
+    marginLeft: -12,
+  },
+  headerTitle: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+    paddingHorizontal: 6,
+  },
+  headerRightSpacer: {
+    width: 28 + 24, // keeps title visually centered (matches back button footprint)
+  },
+
+  // Content matches Dashboard padding
+  content: {
+    padding: 16,
+    flex: 1,
+  },
+
+  empty: {
+    color: '#9CA3AF',
+    textAlign: 'center',
+    paddingTop: 18,
+  },
+
   bubble: {
     maxWidth: '80%',
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderRadius: 16,
-    marginHorizontal: 16,
     marginVertical: 6,
     borderWidth: 1,
     borderColor: '#1F2937',
   },
-  mine: { alignSelf: 'flex-end', backgroundColor: '#1D4ED8' },
-  theirs: { alignSelf: 'flex-start', backgroundColor: '#020617' },
+  mine: {
+    alignSelf: 'flex-end',
+    backgroundColor: '#1D4ED8',
+  },
+  theirs: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#020617',
+  },
   bubbleText: { color: '#FFF', fontSize: 14 },
+
   composer: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    padding: 12,
     gap: 10,
     borderTopWidth: 1,
     borderTopColor: '#1F2937',
     backgroundColor: '#0B1220',
+    padding: 12,
+    borderRadius: 16,
+    marginTop: 10,
   },
   input: {
     flex: 1,
@@ -180,22 +285,4 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   sendText: { color: '#FFF', fontWeight: '800' },
-
-  webFrame: {
-    flex: 1,
-    width: '100%',
-    maxWidth: Platform.OS === 'web' ? 420 : '100%',
-    alignSelf: 'center',
-  },
-  webFrame: {
-    flex: 1,
-    width: '100%',
-    maxWidth: Platform.OS === 'web' ? 420 : '100%',
-    alignSelf: 'center',
-    borderWidth: Platform.OS === 'web' ? 1 : 0,
-    borderColor: Platform.OS === 'web' ? '#1F2937' : 'transparent',
-    borderRadius: Platform.OS === 'web' ? 24 : 0,
-    overflow: 'hidden',
-  },
-
 });

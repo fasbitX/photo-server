@@ -219,12 +219,15 @@ export default function ContactDetailScreen({ navigation, route }) {
               style={[styles.iconDangerBtn, working && styles.btnDisabled]}
               onPress={handleRemove}
               disabled={working}
-              {...(Platform.OS === 'web' ? { title: 'Remove from Saved' } : {})}
+              {...(Platform.OS === 'web' ? { title: 'Delete from Contact List' } : {})}
             >
               {working ? (
                 <ActivityIndicator color="#FFFFFF" />
               ) : (
-                <Ionicons name="trash-outline" size={20} color="#FFFFFF" />
+                <View style={styles.trashIconWrap}>
+                  <Ionicons name="trash-outline" size={22} color="#FFFFFF" style={styles.trashIconBack} />
+                  <Ionicons name="trash-outline" size={20} color="#EF4444" style={styles.trashIconFront} />
+                </View>
               )}
             </TouchableOpacity>
           )}
@@ -304,10 +307,25 @@ const styles = StyleSheet.create({
     width: 62,
     height: 50,
     borderRadius: 18,
-    backgroundColor: '#DC2626',
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: '#1F2937',
     alignItems: 'center',
     justifyContent: 'center',
     alignSelf: 'center',
+  },
+
+  trashIconWrap: {
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  trashIconBack: {
+    position: 'absolute',
+  },
+  trashIconFront: {
+    position: 'absolute',
   },
 
   btnDisabled: { opacity: 0.6 },

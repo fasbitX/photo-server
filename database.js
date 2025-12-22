@@ -68,6 +68,16 @@ function initDatabase() {
         )
       `);
 
+      // ✅ Safe migrations for newer profile fields (run repeatedly)
+      await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS user_name VARCHAR(50)`);
+      await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS gender VARCHAR(20)`);
+      await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS date_of_birth DATE`);
+      await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_path TEXT`);
+
+      // ✅ Unique username index (name chosen so err.constraint matches existing code)
+      await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS users_user_name_key ON users(user_name)`);
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_users_user_name ON users(user_name)`);
+
       // Create transactions table
       await client.query(`
         CREATE TABLE IF NOT EXISTS transactions (
@@ -220,6 +230,17 @@ function generateAccountNumber() {
   return `ACC${timestamp}${random}`;
 }
 
+function parseMmddyyyyToIsoDate(mmddyyyy) {
+  const s = String(mmddyyyy || '').trim();
+  // Expected: MM/DD/YYYY
+  const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (!m) return null;
+  const month = String(m[1]).padStart(2, '0');
+  const day = String(m[2]).padStart(2, '0');
+  const year = String(m[3]);
+  return `${year}-${month}-${day}`;
+}
+
 /* ──────────────────────────────────────────────
  *  USER OPERATIONS
  * ────────────────────────────────────────────── */
@@ -230,6 +251,8 @@ async function createUser(userData) {
     const accountNumber = generateAccountNumber();
     const verificationToken = crypto.randomBytes(32).toString('hex');
     const now = Date.now();
+
+    const dobIso = parseMmddyyyyToIsoDate(userData.dateOfBirth);
 
     console.log('Creating user with data:', {
       accountNumber,
@@ -242,26 +265,38 @@ async function createUser(userData) {
 
     const result = await pool.query(
       `INSERT INTO users (
-        account_number, first_name, last_name, user_name, street_address, city,
-        state, zip, phone, email, password_hash, verification_token,
+        account_number, first_name, last_name, user_name,
+        street_address, city, state, zip,
+        phone, email,
+        gender, date_of_birth,
+        password_hash, verification_token,
         created_date, last_modified
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+      ) VALUES (
+        $1, $2, $3, $4,
+        $5, $6, $7, $8,
+        $9, $10,
+        $11, $12,
+        $13, $14,
+        $15, $16
+      )
       RETURNING id`,
       [
         accountNumber,
         userData.firstName,
         userData.lastName,
-        userData.user_name,       // ADDED: user_name field
+        userData.user_name,
         userData.streetAddress,
         userData.city,
         userData.state,
         userData.zip,
         userData.phone,
         userData.email,
+        userData.gender || null,
+        dobIso,
         passwordHash,
         verificationToken,
         now,
-        now
+        now,
       ]
     );
 
@@ -320,8 +355,10 @@ async function verifyUserEmail(token) {
 async function updateUser(userId, updates) {
   const now = Date.now();
   const allowedFields = [
-    'first_name', 'last_name', 'street_address', 'city', 
-    'state', 'zip', 'phone', 'timezone', 'status'
+    'first_name', 'last_name', 'street_address', 'city',
+    'state', 'zip', 'phone', 'timezone', 'status',
+    // optionally allow username and avatar path updates via server-side logic
+    'user_name', 'avatar_path', 'gender', 'date_of_birth'
   ];
   
   const fields = [];
@@ -347,6 +384,15 @@ async function updateUser(userId, updates) {
 
   const sql = `UPDATE users SET ${fields.join(', ')} WHERE id = $${paramIndex}`;
   const result = await pool.query(sql, values);
+  return result.rowCount > 0;
+}
+
+async function updateUserAvatarPath(userId, avatarPath) {
+  const now = Date.now();
+  const result = await pool.query(
+    'UPDATE users SET avatar_path = $1, last_modified = $2 WHERE id = $3',
+    [avatarPath, now, Number(userId)]
+  );
   return result.rowCount > 0;
 }
 
@@ -883,6 +929,7 @@ module.exports = {
   createUser,
   findUserByEmail,
   findUserById,
+  updateUserAvatarPath,
   verifyPassword,
   verifyUserEmail,
   updateUser,

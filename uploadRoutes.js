@@ -9,9 +9,16 @@ const util = require('tweetnacl-util');
 const sharp = require('sharp');
 const nodemailer = require('nodemailer');
 
+const { updateUserAvatarPath, findUserById } = require('./database');
+
 const uploadDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
+}
+
+const avatarBaseDir = path.join(uploadDir, 'avatars');
+if (!fs.existsSync(avatarBaseDir)) {
+  fs.mkdirSync(avatarBaseDir, { recursive: true });
 }
 
 // Active chunked upload sessions (in-memory)
@@ -57,6 +64,35 @@ const upload = multer({
   storage,
   limits: {
     fileSize: 100 * 1024 * 1024, // 100MB
+  },
+});
+
+// Separate uploader for user avatars (smaller limit, fixed folder)
+const avatarStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    try {
+      const userId = req.body?.userId || req.query?.userId;
+      const finalDir = path.join(avatarBaseDir, safeSegment(userId));
+      if (!fs.existsSync(finalDir)) fs.mkdirSync(finalDir, { recursive: true });
+      cb(null, finalDir);
+    } catch (e) {
+      cb(e);
+    }
+  },
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname || '').toLowerCase() || '.jpg';
+    const unique = `avatar-${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+    cb(null, unique + ext);
+  },
+});
+
+const avatarUpload = multer({
+  storage: avatarStorage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  fileFilter: (req, file, cb) => {
+    const mime = String(file.mimetype || '').toLowerCase();
+    if (mime.startsWith('image/')) return cb(null, true);
+    return cb(new Error('Only image uploads are allowed'));
   },
 });
 
@@ -157,6 +193,63 @@ function toPosixRelative(p) {
  * ────────────────────────────────────────────── */
 
 function registerUploadRoutes(app) {
+  // Upload / update a user's avatar (stores file on disk; DB stores relative path)
+  app.post('/api/mobile/user/avatar', (req, res) => {
+    avatarUpload.single('avatar')(req, res, async (err) => {
+      if (err) {
+        console.error('Avatar upload middleware error:', err);
+        return res.status(400).json({ error: 'Avatar upload failed', details: err.message });
+      }
+
+      try {
+        const userId = req.body?.userId || req.query?.userId;
+        if (!userId) {
+          if (req.file?.path) {
+            try { fs.unlinkSync(req.file.path); } catch (_) {}
+          }
+          return res.status(400).json({ error: 'Missing userId' });
+        }
+
+        if (!req.file) {
+          return res.status(400).json({ error: 'No avatar file uploaded' });
+        }
+
+        // optional: remove previous avatar file
+        try {
+          const existing = await findUserById(Number(userId));
+          const oldRel = existing?.avatar_path;
+          if (oldRel) {
+            const oldAbs = path.join(uploadDir, oldRel);
+            if (fs.existsSync(oldAbs)) {
+              fs.unlinkSync(oldAbs);
+            }
+          }
+        } catch (e) {
+          // ignore cleanup errors
+        }
+
+        await maybeConvertHeicToJpeg(req.file);
+
+        const relPath = toPosixRelative(path.join('avatars', safeSegment(userId), req.file.filename));
+        const ok = await updateUserAvatarPath(Number(userId), relPath);
+
+        if (!ok) {
+          try { fs.unlinkSync(req.file.path); } catch (_) {}
+          return res.status(404).json({ error: 'User not found' });
+        }
+
+        return res.json({
+          ok: true,
+          avatar_path: relPath,
+          url: `/uploads/${relPath}`,
+        });
+      } catch (handlerErr) {
+        console.error('Avatar upload handler error:', handlerErr);
+        return res.status(500).json({ error: 'Server error' });
+      }
+    });
+  });
+
   // standard (non-chunked) upload
   app.post('/upload', (req, res) => {
     upload.single('photo')(req, res, async err => {

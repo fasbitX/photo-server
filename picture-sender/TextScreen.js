@@ -90,42 +90,49 @@ export default function TextScreen({ route }) {
 
   return (
     <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
-    >
-      <Text style={styles.header}>{contactName}</Text>
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
+        >
+        <View style={styles.webFrame}>
+            <Text style={styles.header}>{contactName}</Text>
 
-      <FlatList
-        data={messages}
-        inverted
-        keyExtractor={(item) => String(item.id)}
-        contentContainerStyle={{ paddingVertical: 12 }}
-        ListEmptyComponent={<Text style={styles.empty}>{loading ? 'Loading...' : 'No messages yet.'}</Text>}
-        renderItem={({ item }) => {
-          const mine = Number(item.sender_id) === Number(user?.id);
-          return (
-            <View style={[styles.bubble, mine ? styles.mine : styles.theirs]}>
-              <Text style={styles.bubbleText}>{item.content || ''}</Text>
+            <FlatList
+            data={messages}
+            inverted
+            keyExtractor={(item) => String(item.id)}
+            contentContainerStyle={{ paddingVertical: 12 }}
+            ListEmptyComponent={
+                <Text style={styles.empty}>
+                {loading ? 'Loading...' : 'No messages yet.'}
+                </Text>
+            }
+            renderItem={({ item }) => {
+                const mine = Number(item.sender_id) === Number(user?.id);
+                return (
+                <View style={[styles.bubble, mine ? styles.mine : styles.theirs]}>
+                    <Text style={styles.bubbleText}>{item.content || ''}</Text>
+                </View>
+                );
+            }}
+            />
+
+            <View style={styles.composer}>
+            <TextInput
+                value={text}
+                onChangeText={setText}
+                placeholder="Type a message..."
+                placeholderTextColor="#9CA3AF"
+                style={styles.input}
+                multiline
+            />
+            <TouchableOpacity style={styles.sendBtn} onPress={send} activeOpacity={0.85}>
+                <Text style={styles.sendText}>Send</Text>
+            </TouchableOpacity>
             </View>
-          );
-        }}
-      />
-
-      <View style={styles.composer}>
-        <TextInput
-          value={text}
-          onChangeText={setText}
-          placeholder="Type a message..."
-          placeholderTextColor="#9CA3AF"
-          style={styles.input}
-          multiline
-        />
-        <TouchableOpacity style={styles.sendBtn} onPress={send} activeOpacity={0.85}>
-          <Text style={styles.sendText}>Send</Text>
-        </TouchableOpacity>
-      </View>
+        </View>
     </KeyboardAvoidingView>
+
   );
 }
 
@@ -173,4 +180,22 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   sendText: { color: '#FFF', fontWeight: '800' },
+
+  webFrame: {
+    flex: 1,
+    width: '100%',
+    maxWidth: Platform.OS === 'web' ? 420 : '100%',
+    alignSelf: 'center',
+  },
+  webFrame: {
+    flex: 1,
+    width: '100%',
+    maxWidth: Platform.OS === 'web' ? 420 : '100%',
+    alignSelf: 'center',
+    borderWidth: Platform.OS === 'web' ? 1 : 0,
+    borderColor: Platform.OS === 'web' ? '#1F2937' : 'transparent',
+    borderRadius: Platform.OS === 'web' ? 24 : 0,
+    overflow: 'hidden',
+  },
+
 });

@@ -1,6 +1,6 @@
 // MessagesScreen.js
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, FlatList } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, FlatList, Platform } from 'react-native';
 import { useAuth } from './auth';
 
 export default function MessagesScreen({ navigation }) {
@@ -41,44 +41,46 @@ export default function MessagesScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Messages</Text>
+      <View style={styles.webFrame}>
+        <Text style={styles.title}>Messages</Text>
 
-      <TextInput
-        value={q}
-        onChangeText={setQ}
-        placeholder="Search contacts..."
-        placeholderTextColor="#9CA3AF"
-        style={styles.search}
-      />
+        <TextInput
+            value={q}
+            onChangeText={setQ}
+            placeholder="Search contacts..."
+            placeholderTextColor="#9CA3AF"
+            style={styles.search}
+        />
 
-      <FlatList
-        data={filtered}
-        keyExtractor={(item) => String(item.id)}
-        contentContainerStyle={{ paddingBottom: 24 }}
-        ListEmptyComponent={
-          <Text style={styles.empty}>
-            {loading ? 'Loading...' : 'No contacts yet.'}
-          </Text>
-        }
-        renderItem={({ item }) => {
-          const name = `${item.first_name || ''} ${item.last_name || ''}`.trim() || item.email || 'Contact';
-          return (
-            <TouchableOpacity
-              style={styles.row}
-              onPress={() => navigation.navigate('Text', { contact: item })}
-              activeOpacity={0.8}
-            >
-              <View style={styles.avatar}>
-                <Text style={styles.avatarText}>{name.slice(0, 1).toUpperCase()}</Text>
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.name}>{name}</Text>
-                {!!item.email && <Text style={styles.sub}>{item.email}</Text>}
-              </View>
-            </TouchableOpacity>
-          );
-        }}
-      />
+        <FlatList
+            data={filtered}
+            keyExtractor={(item) => String(item.id)}
+            contentContainerStyle={{ paddingBottom: 24 }}
+            ListEmptyComponent={
+            <Text style={styles.empty}>
+                {loading ? 'Loading...' : 'No contacts yet.'}
+            </Text>
+            }
+            renderItem={({ item }) => {
+            const name = `${item.first_name || ''} ${item.last_name || ''}`.trim() || item.email || 'Contact';
+            return (
+                <TouchableOpacity
+                style={styles.row}
+                onPress={() => navigation.navigate('Text', { contact: item })}
+                activeOpacity={0.8}
+                >
+                <View style={styles.avatar}>
+                    <Text style={styles.avatarText}>{name.slice(0, 1).toUpperCase()}</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                    <Text style={styles.name}>{name}</Text>
+                    {!!item.email && <Text style={styles.sub}>{item.email}</Text>}
+                </View>
+                </TouchableOpacity>
+            );
+            }}
+        />
+        </View>
     </View>
   );
 }
@@ -115,5 +117,25 @@ const styles = StyleSheet.create({
   avatarText: { color: '#FFF', fontWeight: '800' },
   name: { color: '#FFF', fontSize: 16, fontWeight: '600' },
   sub: { color: '#9CA3AF', fontSize: 12, marginTop: 2 },
-  empty: { color: '#9CA3AF', paddingTop: 24, textAlign: 'center' },
+  empty: { color: '#9CA3AF', paddingTop: 24, textAlign: 'center'
+  },
+
+  webFrame: {
+  flex: 1,
+  width: '100%',
+  maxWidth: Platform.OS === 'web' ? 420 : '100%',
+  alignSelf: 'center',
+ },
+
+ webFrame: {
+  flex: 1,
+  width: '100%',
+  maxWidth: Platform.OS === 'web' ? 420 : '100%',
+  alignSelf: 'center',
+  borderWidth: Platform.OS === 'web' ? 1 : 0,
+  borderColor: Platform.OS === 'web' ? '#1F2937' : 'transparent',
+  borderRadius: Platform.OS === 'web' ? 24 : 0,
+  overflow: 'hidden',
+ },
+
 });

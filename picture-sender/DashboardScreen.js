@@ -7,7 +7,6 @@ import {
   ScrollView,
   TouchableOpacity,
   TextInput,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   Image,
@@ -32,8 +31,15 @@ function resolveUploadUrl(serverUrl, avatarPath) {
   return `${base}/uploads/${clean}`;
 }
 
+function toHandle(user) {
+  const raw = String(user?.user_name || '').trim();
+  const cleaned = raw ? raw.replace(/^@+/, '') : '';
+  const fallback = String(user?.email || '').split('@')[0] || 'user';
+  return `@${(cleaned || fallback).trim()}`;
+}
+
 export default function DashboardScreen({ navigation }) {
-  const { user, serverUrl, logout } = useAuth();
+  const { user, serverUrl } = useAuth();
   const insets = useSafeAreaInsets();
 
   const [threads, setThreads] = useState([]);
@@ -45,10 +51,8 @@ export default function DashboardScreen({ navigation }) {
     [serverUrl, user?.avatar_path]
   );
 
-  const displayName =
-    String(user?.user_name || '').trim() ||
-    `${user?.first_name || ''} ${user?.last_name || ''}`.trim() ||
-    'User';
+  // Handle is always the user_name from DB (which includes @)
+  const handle = useMemo(() => String(user?.user_name || '').trim(), [user?.user_name]);
 
   const keyboardOffset = Platform.OS === 'ios' ? insets.top + 64 : 0;
 
@@ -65,8 +69,9 @@ export default function DashboardScreen({ navigation }) {
       const data = await res.json();
       if (res.ok) {
         const list = Array.isArray(data.threads) ? data.threads : [];
-        // Newest at top (defensive sort)
-        list.sort((a, b) => Number(b?.last?.sent_date || 0) - Number(a?.last?.sent_date || 0));
+        list.sort(
+          (a, b) => Number(b?.last?.sent_date || 0) - Number(a?.last?.sent_date || 0)
+        );
         setThreads(list);
       }
     } catch (e) {
@@ -96,18 +101,6 @@ export default function DashboardScreen({ navigation }) {
     });
   }, [threads, searchText]);
 
-  const handleLogout = async () => {
-    if (Platform.OS === 'web') {
-      await logout();
-      return;
-    }
-
-    Alert.alert('Logout', 'Are you sure you want to logout?', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Logout', style: 'destructive', onPress: logout },
-    ]);
-  };
-
   const openThread = (t) => {
     const contact = t?.contact;
     if (!contact?.id) return;
@@ -122,25 +115,13 @@ export default function DashboardScreen({ navigation }) {
     >
       <View style={styles.outerContainer}>
         <View style={styles.container}>
-          {/* Header */}
-          <View style={[styles.header, { paddingTop: insets.top + 14 }]}>
-            <Text style={styles.headerTitle}>Dashboard</Text>
-            <TouchableOpacity
-              onPress={handleLogout}
-              style={styles.headerIconBtn}
-              activeOpacity={0.6}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              accessibilityRole="button"
-              accessibilityLabel="Logout"
-            >
-              <Ionicons name="log-out-outline" size={26} color="#9CA3AF" />
-            </TouchableOpacity>
-          </View>
-
           <ScrollView
             contentContainerStyle={[
               styles.content,
-              { paddingBottom: Math.max(insets.bottom, 16) },
+              {
+                paddingTop: insets.top + 16,
+                paddingBottom: Math.max(insets.bottom, 16),
+              },
             ]}
             keyboardShouldPersistTaps="handled"
           >
@@ -151,10 +132,14 @@ export default function DashboardScreen({ navigation }) {
               activeOpacity={0.85}
             >
               <View style={styles.welcomeRow}>
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={styles.cardTitle}>Welcome</Text>
-                  <Text style={styles.userName} numberOfLines={1}>
-                    {displayName}
+                <View style={styles.welcomeTextCol}>
+                  <Text style={styles.welcomeTitle}>Welcome</Text>
+
+                  <Text
+                    style={[styles.handleText, !handle && styles.missingHandle]}
+                    numberOfLines={1}
+                  >
+                    {handle || 'MISSING USERNAME'}
                   </Text>
                 </View>
 
@@ -200,6 +185,7 @@ export default function DashboardScreen({ navigation }) {
             <View style={styles.card}>
               <View style={styles.threadsHeaderRow}>
                 <Text style={styles.cardTitle}>Threads</Text>
+
                 <TouchableOpacity
                   onPress={() => navigation.navigate('Contacts')}
                   activeOpacity={0.85}
@@ -278,30 +264,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#111827',
   },
 
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingBottom: 14,
-    backgroundColor: '#020617',
-    borderBottomWidth: 1,
-    borderBottomColor: '#1F2937',
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-  },
-  headerIconBtn: {
-    padding: 12,
-    marginRight: -12,
-  },
-
   content: {
     padding: 16,
-    paddingTop: 18,
-    paddingBottom: 24,
   },
 
   card: {
@@ -312,26 +276,36 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#1F2937',
   },
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#FFFFFF',
-    marginBottom: 8,
-  },
 
+  // ✅ Welcome card: ~0.75" tall feel (tight)
+  welcomeCard: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    minHeight: 66,
+    maxHeight: 72,
+    justifyContent: 'center',
+  },
   welcomeRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
   },
-  userName: {
-    fontSize: 20,
+  welcomeTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    marginBottom: 4,
+  },
+  handleText: {
+    fontSize: 16,
     fontWeight: '800',
     color: '#FFFFFF',
   },
+
+  // ✅ smaller avatar
   avatarWrap: {
-    width: 56,
-    height: 56,
+    width: 44,
+    height: 44,
     borderRadius: 999,
     borderWidth: 1,
     borderColor: '#1F2937',
@@ -347,7 +321,14 @@ const styles = StyleSheet.create({
   avatarInitials: {
     color: '#93C5FD',
     fontWeight: '900',
-    fontSize: 16,
+    fontSize: 14,
+  },
+
+  cardTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    marginBottom: 8,
   },
 
   balanceRow: {
@@ -446,12 +427,14 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 3,
   },
-  welcomeCard: {
-  paddingVertical: 12,
-  paddingHorizontal: 18,
-  minHeight: 82,
-  maxHeight: 92,
-  justifyContent: 'center',
-},
+  welcomeTextCol: {
+    flex: 1,
+    minWidth: 0,
+    justifyContent: 'center',
+  },
+
+  missingHandle: {
+    color: '#F87171', // red warning
+  },
 
 });

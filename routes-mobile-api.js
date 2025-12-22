@@ -65,6 +65,7 @@ function registerMobileApiRoutes(app) {
       const userData = {
         id: user.id,
         account_number: user.account_number,
+        user_name: user.user_name,          
         first_name: user.first_name,
         last_name: user.last_name,
         email: user.email,
@@ -72,7 +73,9 @@ function registerMobileApiRoutes(app) {
         status: user.status,
         account_balance: parseFloat(user.account_balance),
         email_verified: user.email_verified,
-      };
+        avatar_path: user.avatar_path || null, 
+        };
+
       
       res.json({ user: userData });
       
@@ -212,6 +215,7 @@ function registerMobileApiRoutes(app) {
       const userData = {
         id: user.id,
         account_number: user.account_number,
+        user_name: user.user_name,          
         first_name: user.first_name,
         last_name: user.last_name,
         email: user.email,
@@ -219,7 +223,9 @@ function registerMobileApiRoutes(app) {
         status: user.status,
         account_balance: parseFloat(user.account_balance),
         email_verified: user.email_verified,
-      };
+        avatar_path: user.avatar_path || null, 
+        };
+
       
       res.json({ user: userData });
       

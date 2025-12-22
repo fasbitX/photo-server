@@ -56,7 +56,11 @@ export default function DashboardScreen({ navigation }) {
       navigation.navigate('Contacts');
       return;
     }
-    Alert.alert('Coming Soon', `${section} functionality will be added soon`);
+    if (section === 'Messages') {
+      navigation.navigate('Messages');
+      return;
+    }
+
   };
 
   const fullName = `${user?.first_name || ''} ${user?.last_name || ''}`.trim() || 'User';

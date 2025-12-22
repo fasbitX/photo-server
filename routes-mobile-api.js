@@ -11,6 +11,11 @@ const {
   addContact,
   removeContact,
   listContacts,
+  sendMessage,
+  listThreads,
+  getThreadMessages,
+  markThreadRead,
+  findUserById,
 } = require('./database');
 const {
   sendVerificationEmail,
@@ -315,7 +320,118 @@ function registerMobileApiRoutes(app) {
         console.error('contacts/remove error:', err);
         res.status(500).json({ error: 'Remove failed' });
     }
- });
+    });
+
+    // ──────────────────────────────────────────────
+    // MESSAGES (MOBILE)
+    // ──────────────────────────────────────────────
+
+    app.post('/api/mobile/messages/threads', express.json(), async (req, res) => {
+    try {
+        const { requesterId, limit } = req.body || {};
+        if (!requesterId) return res.status(400).json({ error: 'Missing requesterId' });
+
+        const threads = await listThreads({ userId: requesterId, limit: limit || 50 });
+
+        // For each thread, compute "other user"
+        const hydrated = [];
+        for (const t of threads) {
+        const otherId = Number(t.user1_id) === Number(requesterId) ? t.user2_id : t.user1_id;
+        const other = await findUserById(otherId);
+        hydrated.push({
+            conversation_id: t.conversation_id,
+            contact: other
+            ? { id: other.id, first_name: other.first_name, last_name: other.last_name, email: other.email }
+            : { id: otherId },
+            last: {
+            id: t.last_message_id,
+            sender_id: t.last_sender_id,
+            type: t.last_message_type,
+            content: t.last_content,
+            attachment_path: t.last_attachment_path,
+            sent_date: t.last_sent_date,
+            },
+        });
+        }
+
+        res.json({ threads: hydrated });
+    } catch (err) {
+        console.error('messages/threads error:', err);
+        res.status(500).json({ error: 'Failed to load threads' });
+    }
+    });
+
+    app.post('/api/mobile/messages/thread', express.json(), async (req, res) => {
+    try {
+        const { requesterId, contactUserId, limit, beforeId } = req.body || {};
+        if (!requesterId) return res.status(400).json({ error: 'Missing requesterId' });
+        if (!contactUserId) return res.status(400).json({ error: 'Missing contactUserId' });
+
+        const out = await getThreadMessages({
+        requesterId,
+        contactUserId,
+        limit: limit || 50,
+        beforeId: beforeId || null,
+        });
+
+        res.json(out);
+    } catch (err) {
+        console.error('messages/thread error:', err);
+        res.status(500).json({ error: 'Failed to load thread' });
+    }
+    });
+
+    app.post('/api/mobile/messages/send', express.json(), async (req, res) => {
+    try {
+        const {
+        senderId,
+        recipientId,
+        content,
+        attachmentPath,
+        attachmentMime,
+        attachmentSize,
+        attachmentOriginalName,
+        } = req.body || {};
+
+        if (!senderId) return res.status(400).json({ error: 'Missing senderId' });
+        if (!recipientId) return res.status(400).json({ error: 'Missing recipientId' });
+
+        if (!content && !attachmentPath) {
+        return res.status(400).json({ error: 'Message must have content or attachment' });
+        }
+
+        const msg = await sendMessage({
+        senderId,
+        recipientId,
+        content: content != null ? String(content) : null,
+        attachmentPath: attachmentPath || null,
+        attachmentMime: attachmentMime || null,
+        attachmentSize: attachmentSize || null,
+        attachmentOriginalName: attachmentOriginalName || null,
+        });
+
+        res.json({ message: msg });
+    } catch (err) {
+        console.error('messages/send error:', err);
+        res.status(500).json({ error: 'Failed to send message' });
+    }
+    });
+
+    app.post('/api/mobile/messages/mark-read', express.json(), async (req, res) => {
+    try {
+        const { requesterId, conversationId } = req.body || {};
+        if (!requesterId) return res.status(400).json({ error: 'Missing requesterId' });
+        if (!conversationId) return res.status(400).json({ error: 'Missing conversationId' });
+
+        const ok = await markThreadRead({ requesterId, conversationId });
+        res.json(ok);
+    } catch (err) {
+        console.error('messages/mark-read error:', err);
+        res.status(500).json({ error: 'Failed to mark read' });
+    }
+    });
+
+
 
 }
 

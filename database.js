@@ -112,6 +112,33 @@ function initDatabase() {
         )
       `);
 
+      // ✅ Conversations table (thread per user-pair)
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS conversations (
+          id SERIAL PRIMARY KEY,
+          user1_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          user2_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          created_date BIGINT NOT NULL,
+          last_message_date BIGINT,
+          last_message_id INTEGER,
+          UNIQUE(user1_id, user2_id)
+        )
+      `);
+
+      // ✅ Add columns to messages for threading + attachments (safe to run repeatedly)
+      await client.query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS conversation_id INTEGER REFERENCES conversations(id) ON DELETE CASCADE`);
+      await client.query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS attachment_path TEXT`);
+      await client.query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS attachment_mime VARCHAR(100)`);
+      await client.query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS attachment_size BIGINT`);
+      await client.query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS attachment_original_name TEXT`);
+
+      // ✅ Helpful indexes
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_conversations_user1 ON conversations(user1_id)`);
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_conversations_user2 ON conversations(user2_id)`);
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_messages_conversation_id ON messages(conversation_id)`);
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_messages_conv_id_id ON messages(conversation_id, id DESC)`);
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_messages_recipient_status ON messages(recipient_id, status)`);
+     
       // Create contacts table
       await client.query(`
         CREATE TABLE IF NOT EXISTS contacts (
@@ -677,6 +704,164 @@ async function getUserPhotos(userId, limit = 50) {
   return result.rows;
 }
 
+function normalizePair(a, b) {
+  const x = Number(a);
+  const y = Number(b);
+  return x < y ? [x, y] : [y, x];
+}
+
+async function getOrCreateConversation(userA, userB) {
+  const [u1, u2] = normalizePair(userA, userB);
+  const now = Date.now();
+
+  // Try existing
+  const existing = await pool.query(
+    `SELECT id FROM conversations WHERE user1_id=$1 AND user2_id=$2`,
+    [u1, u2]
+  );
+  if (existing.rows[0]) return existing.rows[0].id;
+
+  // Create
+  const created = await pool.query(
+    `INSERT INTO conversations (user1_id, user2_id, created_date)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (user1_id, user2_id) DO UPDATE SET user1_id=EXCLUDED.user1_id
+     RETURNING id`,
+    [u1, u2, now]
+  );
+  return created.rows[0].id;
+}
+
+async function sendMessage({
+  senderId,
+  recipientId,
+  content = null,
+  attachmentPath = null,
+  attachmentMime = null,
+  attachmentSize = null,
+  attachmentOriginalName = null,
+}) {
+  const conversationId = await getOrCreateConversation(senderId, recipientId);
+  const now = Date.now();
+
+  const messageType =
+    attachmentPath && content ? 'mixed' : attachmentPath ? 'media' : 'text';
+
+  const inserted = await pool.query(
+    `INSERT INTO messages (
+      conversation_id,
+      sender_id,
+      recipient_id,
+      message_type,
+      content,
+      attachment_path,
+      attachment_mime,
+      attachment_size,
+      attachment_original_name,
+      sent_date,
+      status
+    )
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'sent')
+    RETURNING *`,
+    [
+      conversationId,
+      senderId,
+      recipientId,
+      messageType,
+      content,
+      attachmentPath,
+      attachmentMime,
+      attachmentSize,
+      attachmentOriginalName,
+      now,
+    ]
+  );
+
+  const msg = inserted.rows[0];
+
+  // Update conversation pointers
+  await pool.query(
+    `UPDATE conversations
+     SET last_message_date=$1, last_message_id=$2
+     WHERE id=$3`,
+    [now, msg.id, conversationId]
+  );
+
+  return msg;
+}
+
+async function listThreads({ userId, limit = 50 }) {
+  const uid = Number(userId);
+
+  // Return conversations + last message (fast enough for MVP)
+  const rows = await pool.query(
+    `
+    SELECT
+      c.id AS conversation_id,
+      c.user1_id,
+      c.user2_id,
+      c.last_message_date,
+      m.id AS last_message_id,
+      m.sender_id AS last_sender_id,
+      m.message_type AS last_message_type,
+      m.content AS last_content,
+      m.attachment_path AS last_attachment_path,
+      m.sent_date AS last_sent_date
+    FROM conversations c
+    LEFT JOIN messages m ON m.id = c.last_message_id
+    WHERE c.user1_id = $1 OR c.user2_id = $1
+    ORDER BY c.last_message_date DESC NULLS LAST, c.id DESC
+    LIMIT $2
+    `,
+    [uid, limit]
+  );
+
+  return rows.rows;
+}
+
+async function getThreadMessages({ requesterId, contactUserId, limit = 50, beforeId = null }) {
+  const conversationId = await getOrCreateConversation(requesterId, contactUserId);
+
+  const params = [conversationId];
+  let whereExtra = '';
+
+  if (beforeId) {
+    params.push(Number(beforeId));
+    whereExtra = `AND id < $2`;
+  }
+
+  params.push(Number(limit));
+  const limitParamIndex = params.length;
+
+  const sql = `
+    SELECT *
+    FROM messages
+    WHERE conversation_id = $1
+    ${whereExtra}
+    ORDER BY id DESC
+    LIMIT $${limitParamIndex}
+  `;
+
+  const result = await pool.query(sql, params);
+  return { conversationId, messages: result.rows };
+}
+
+async function markThreadRead({ requesterId, conversationId }) {
+  const now = Date.now();
+  await pool.query(
+    `
+    UPDATE messages
+    SET status='read', read_date=$1
+    WHERE conversation_id=$2
+      AND recipient_id=$3
+      AND (status IS NULL OR status <> 'read')
+    `,
+    [now, Number(conversationId), Number(requesterId)]
+  );
+  return { ok: true };
+}
+
+
 /* ──────────────────────────────────────────────
  *  CLEANUP
  * ────────────────────────────────────────────── */
@@ -715,4 +900,11 @@ module.exports = {
   addContact,
   removeContact,
   listContacts,
+    // messages
+  getOrCreateConversation,
+  sendMessage,
+  listThreads,
+  getThreadMessages,
+  markThreadRead,
+
 };

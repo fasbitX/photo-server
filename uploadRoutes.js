@@ -35,7 +35,15 @@ for (const id in CLIENTS) {
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, uploadDir);
+    try {
+      const subdir = getUploadSubdirFromBody(req.body);
+      const finalDir = path.join(uploadDir, subdir);
+
+      if (!fs.existsSync(finalDir)) fs.mkdirSync(finalDir, { recursive: true });
+      cb(null, finalDir);
+    } catch (e) {
+      cb(e);
+    }
   },
   filename: (req, file, cb) => {
     const ext = path.extname(file.originalname || '').toLowerCase() || '.jpg';
@@ -43,6 +51,7 @@ const storage = multer.diskStorage({
     cb(null, unique + ext);
   },
 });
+
 
 const upload = multer({
   storage,
@@ -118,6 +127,30 @@ function getMimeTypeFromExtension(ext) {
   if (lower === '.heic' || lower === '.heif') return 'image/heic';
   return 'application/octet-stream';
 }
+
+function safeSegment(v) {
+  const s = String(v || '').trim();
+  // allow only simple folder-safe characters
+  const cleaned = s.replace(/[^a-zA-Z0-9_-]/g, '');
+  return cleaned || 'unknown';
+}
+
+function getUploadSubdirFromBody(body) {
+  const purpose = String(body?.purpose || '').trim().toLowerCase();
+  const uploaderId = body?.uploaderId;
+
+  if (purpose === 'chat') {
+    return path.join('chat', safeSegment(uploaderId));
+  }
+
+  // default: store in root uploads (keeps existing behavior)
+  return '';
+}
+
+function toPosixRelative(p) {
+  return p.split(path.sep).join('/');
+}
+
 
 /* ──────────────────────────────────────────────
  *  ROUTE REGISTRATION
@@ -196,6 +229,8 @@ function registerUploadRoutes(app) {
         originalName,
         totalChunks,
         fileSha256,
+        purpose,
+        uploaderId,
       } = req.body || {};
 
       if (
@@ -233,8 +268,12 @@ function registerUploadRoutes(app) {
         fileSha256,
         base64Chunks: new Array(Number(totalChunks)).fill(null),
         createdAt: Date.now(),
-      });
 
+        // ✅ NEW
+        purpose: String(purpose || '').trim().toLowerCase(),
+        uploaderId: uploaderId,
+      });
+      
       console.log('Chunked upload started', {
         uploadId,
         clientId,
@@ -349,10 +388,19 @@ function registerUploadRoutes(app) {
       const ext = path.extname(session.originalName) || '.jpg';
       const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
       const finalFilename = unique + ext;
-      const finalPath = path.join(uploadDir, finalFilename);
 
+      // ✅ choose subdir (chat/<uploaderId> when purpose === 'chat')
+      const subdir = session.purpose === 'chat'
+        ? path.join('chat', safeSegment(session.uploaderId))
+        : '';
+
+      const finalDir = path.join(uploadDir, subdir);
+      if (!fs.existsSync(finalDir)) fs.mkdirSync(finalDir, { recursive: true });
+
+      const finalPath = path.join(finalDir, finalFilename);
       fs.writeFileSync(finalPath, fileBuffer);
 
+      // ✅ IMPORTANT: use multer-style key "originalname" for HEIC conversion helper
       const file = {
         path: finalPath,
         filename: finalFilename,
@@ -362,21 +410,37 @@ function registerUploadRoutes(app) {
 
       await maybeConvertHeicToJpeg(file);
 
+      // If HEIC converted, file.path/filename/mimetype may have changed.
+      // Recompute relativePath + url after conversion:
+      const relativePath = toPosixRelative(path.relative(uploadDir, file.path));
+      const url = `/uploads/${relativePath}`;
+
       activeChunkUploads.delete(uploadId);
 
       console.log('Chunked upload completed', {
         uploadId,
         filename: file.filename,
         originalName: file.originalname,
+        relativePath,
       });
 
       return res.json({
         status: 'ok',
         verified: true,
+
+        // ✅ New structured payload (what TextScreen will use)
+        file: {
+          relativePath,
+          mime: file.mimetype,
+          size: fs.statSync(file.path).size,
+          originalName: file.originalname,
+        },
+
+        // ✅ Backward compatible fields (so old code still works)
         filename: file.filename,
         originalname: file.originalname,
         mimetype: file.mimetype,
-        url: `/uploads/${file.filename}`,
+        url,
       });
     } catch (err) {
       console.error('Error in /upload-chunk-complete', err);

@@ -57,6 +57,10 @@ app.use(
   })
 );
 
+// Serve uploaded media files (LAN/MVP)
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+
 /* ──────────────────────────────────────────────
  *  ADMIN AUTH HELPERS
  * ────────────────────────────────────────────── */

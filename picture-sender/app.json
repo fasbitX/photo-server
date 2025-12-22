@@ -7,13 +7,11 @@
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
-
     "icon": "./assets/images/icon.png",
-
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.brian.vt.picturesender"
     },
-
     "android": {
       "package": "com.brian.vt.picturesender",
       "adaptiveIcon": {
@@ -23,11 +21,9 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       }
     },
-
     "web": {
       "favicon": "./assets/images/favicon.png"
     },
-
     "plugins": [
       [
         "expo-build-properties",
@@ -52,7 +48,6 @@
       "expo-asset",
       "expo-font"
     ],
-
     "extra": {
       "eas": {
         "projectId": "59e4ffce-4875-463e-9772-d53a45c8aef2"

@@ -2,28 +2,41 @@
   "expo": {
     "name": "picture-sender",
     "slug": "picture-sender",
+    "scheme": "picturesender",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
-    "scheme": "picturesender",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
+
+    "icon": "./assets/images/icon.png",
+
     "ios": {
       "supportsTablet": true
     },
+
     "android": {
+      "package": "com.brian.vt.picturesender",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
-      },
-      "package": "com.brian.vt.picturesender"
+      }
     },
+
     "web": {
       "favicon": "./assets/images/favicon.png"
     },
+
     "plugins": [
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "kotlinVersion": "2.0.21"
+          }
+        }
+      ],
       [
         "expo-splash-screen",
         {
@@ -39,6 +52,7 @@
       "expo-asset",
       "expo-font"
     ],
+
     "extra": {
       "eas": {
         "projectId": "59e4ffce-4875-463e-9772-d53a45c8aef2"

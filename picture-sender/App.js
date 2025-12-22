@@ -29,15 +29,7 @@ import ContactScreen from './ContactScreen';
 import ContactDetailScreen from './ContactDetailScreen';
 import MessagesScreen from './MessagesScreen';
 import TextScreen from './TextScreen';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
-
-export default function App() {
-  return (
-    <SafeAreaProvider>
-      {/* your existing navigation/app */}
-    </SafeAreaProvider>
-  );
-}
+import UserDetailScreen from './userDetailScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -329,6 +321,7 @@ function AppNavigator() {
           <Stack.Screen name="ContactDetail" component={ContactDetailScreen} />
           <Stack.Screen name="Messages" component={MessagesScreen} />
           <Stack.Screen name="Text" component={TextScreen} />
+          <Stack.Screen name="UserDetail" component={UserDetailScreen} />
           
         </>
       ) : (
@@ -342,17 +335,22 @@ function AppNavigator() {
 }
 
 // Root App component
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+
 export default function App() {
   return (
-    <AuthProvider>
-      <AdminProvider>
-        <NavigationContainer>
-          <AppNavigator />
-        </NavigationContainer>
-      </AdminProvider>
-    </AuthProvider>
+    <SafeAreaProvider>
+      <AuthProvider>
+        <AdminProvider>
+          <NavigationContainer>
+            <AppNavigator />
+          </NavigationContainer>
+        </AdminProvider>
+      </AuthProvider>
+    </SafeAreaProvider>
   );
 }
+
 
 const styles = StyleSheet.create({
   container: {

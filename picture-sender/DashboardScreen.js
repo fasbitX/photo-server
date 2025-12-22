@@ -146,7 +146,7 @@ export default function DashboardScreen({ navigation }) {
           >
             {/* 1) Welcome card (tap -> UserDetail) */}
             <TouchableOpacity
-              style={styles.card}
+              style={[styles.card, styles.welcomeCard]}
               onPress={() => navigation.navigate('UserDetail')}
               activeOpacity={0.85}
             >
@@ -300,6 +300,8 @@ const styles = StyleSheet.create({
 
   content: {
     padding: 16,
+    paddingTop: 18,
+    paddingBottom: 24,
   },
 
   card: {
@@ -314,7 +316,7 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
     color: '#FFFFFF',
-    marginBottom: 12,
+    marginBottom: 8,
   },
 
   welcomeRow: {
@@ -444,4 +446,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 3,
   },
+  welcomeCard: {
+  paddingVertical: 12,
+  paddingHorizontal: 18,
+  minHeight: 82,
+  maxHeight: 92,
+  justifyContent: 'center',
+},
+
 });

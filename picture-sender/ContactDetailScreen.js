@@ -168,9 +168,7 @@ export default function ContactDetailScreen({ navigation, route }) {
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.headerBtn} />
-          <Text style={styles.headerTitle} numberOfLines={1}>
-            {displayName}
-          </Text>
+          <Text style={styles.headerTitle} numberOfLines={1}>Contact</Text>
           <TouchableOpacity
             onPress={() => navigation.goBack()}
             style={styles.headerBtn}
@@ -218,17 +216,15 @@ export default function ContactDetailScreen({ navigation, route }) {
             </TouchableOpacity>
           ) : (
             <TouchableOpacity
-              style={[styles.dangerBtn, working && styles.btnDisabled]}
+              style={[styles.iconDangerBtn, working && styles.btnDisabled]}
               onPress={handleRemove}
               disabled={working}
+              {...(Platform.OS === 'web' ? { title: 'Remove from Saved' } : {})}
             >
               {working ? (
                 <ActivityIndicator color="#FFFFFF" />
               ) : (
-                <>
-                  <Ionicons name="trash-outline" size={18} color="#FFFFFF" />
-                  <Text style={styles.dangerBtnText}>Remove from Saved</Text>
-                </>
+                <Ionicons name="trash-outline" size={20} color="#FFFFFF" />
               )}
             </TouchableOpacity>
           )}
@@ -303,17 +299,16 @@ const styles = StyleSheet.create({
   },
   primaryBtnText: { color: '#FFFFFF', fontWeight: '900' },
 
-  dangerBtn: {
+  iconDangerBtn: {
     marginTop: 14,
+    width: 62,
+    height: 50,
+    borderRadius: 18,
     backgroundColor: '#DC2626',
-    borderRadius: 999,
-    paddingVertical: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    flexDirection: 'row',
-    gap: 10,
+    alignSelf: 'center',
   },
-  dangerBtnText: { color: '#FFFFFF', fontWeight: '900' },
 
   btnDisabled: { opacity: 0.6 },
 

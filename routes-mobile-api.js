@@ -15,8 +15,7 @@ const {
   listThreads,
   getThreadMessages,
   markThreadRead,
-  findUserById,
-} = require('./database');
+  } = require('./database');
 const {
   sendVerificationEmail,
 } = require('./email-utils');

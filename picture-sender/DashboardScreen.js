@@ -1,4 +1,3 @@
-// DashboardScreen.js
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
@@ -24,30 +23,91 @@ function initialsFromUser(u) {
   return i || '@';
 }
 
-function resolveUploadUrl(serverUrl, avatarPath) {
-  if (!serverUrl || !avatarPath) return null;
+function resolveUploadUrl(serverUrl, path) {
+  if (!serverUrl || !path) return null;
+
   const base = String(serverUrl).replace(/\/+$/, '');
-  const clean = String(avatarPath).replace(/^\/+/, '');
+  const raw = String(path).trim();
+
+  // already absolute?
+  if (/^https?:\/\//i.test(raw)) return raw;
+
+  const clean = raw.replace(/^\/+/, '');
+  if (clean.startsWith('uploads/')) return `${base}/${clean}`;
   return `${base}/uploads/${clean}`;
 }
 
-function toHandle(user) {
-  const raw = String(user?.user_name || '').trim();
-  const cleaned = raw ? raw.replace(/^@+/, '') : '';
-  const fallback = String(user?.email || '').split('@')[0] || 'user';
-  return `@${(cleaned || fallback).trim()}`;
-}
+/**
+ * AuthImage:
+ * - Native: uses Image headers (Authorization)
+ * - Web: fetches blob with Authorization and renders an object URL
+ */
+function AuthImage({ uri, authToken, style, fallback }) {
+  const [webObjectUrl, setWebObjectUrl] = useState(null);
+  const [failed, setFailed] = useState(false);
 
-function formatCurrency(value) {
-  const num = parseFloat(value || 0);
-  return num.toLocaleString('en-US', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+  useEffect(() => {
+    setFailed(false);
+
+    if (Platform.OS !== 'web') return;
+    if (!uri || !authToken) {
+      setWebObjectUrl(null);
+      return;
+    }
+
+    let alive = true;
+    let createdUrl = null;
+
+    (async () => {
+      try {
+        const res = await fetch(uri, {
+          headers: { Authorization: `Bearer ${authToken}` },
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+        const blob = await res.blob();
+        createdUrl = URL.createObjectURL(blob);
+
+        if (!alive) {
+          URL.revokeObjectURL(createdUrl);
+          return;
+        }
+        setWebObjectUrl(createdUrl);
+      } catch {
+        if (alive) {
+          setFailed(true);
+          setWebObjectUrl(null);
+        }
+      }
+    })();
+
+    return () => {
+      alive = false;
+      if (createdUrl) URL.revokeObjectURL(createdUrl);
+    };
+  }, [uri, authToken]);
+
+  if (!uri || failed) return fallback || null;
+
+  if (Platform.OS === 'web') {
+    if (!webObjectUrl) return fallback || null; // loading / failed
+    return <Image source={{ uri: webObjectUrl }} style={style} />;
+  }
+
+  return (
+    <Image
+      source={{
+        uri,
+        headers: authToken ? { Authorization: `Bearer ${authToken}` } : undefined,
+      }}
+      style={style}
+      onError={() => setFailed(true)}
+    />
+  );
 }
 
 export default function DashboardScreen({ navigation }) {
-  const { user, serverUrl, refreshUser } = useAuth();
+  const { user, serverUrl, authToken, refreshUser, getAuthHeaders } = useAuth();
   const insets = useSafeAreaInsets();
 
   const [threads, setThreads] = useState([]);
@@ -59,49 +119,62 @@ export default function DashboardScreen({ navigation }) {
     [serverUrl, user?.avatar_path]
   );
 
-  // Handle is always the user_name from DB (which includes @)
+  // user_name is REQUIRED (never fallback to email here)
   const handle = useMemo(() => String(user?.user_name || '').trim(), [user?.user_name]);
 
   const keyboardOffset = Platform.OS === 'ios' ? insets.top + 64 : 0;
 
   const fetchThreads = async () => {
-    if (!user?.id || !serverUrl) return;
+    if (!user?.id || !serverUrl || !authToken) return;
+
     setLoadingThreads(true);
     try {
-      const url = `${serverUrl.replace(/\/+$/, '')}/api/mobile/messages/threads`;
+      const url = `${String(serverUrl).replace(/\/+$/, '')}/api/mobile/messages/threads`;
+
       const res = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(), // ✅ includes Authorization: Bearer <token>
         body: JSON.stringify({ requesterId: user.id, limit: 100 }),
       });
-      const data = await res.json();
-      if (res.ok) {
-        const list = Array.isArray(data.threads) ? data.threads : [];
-        list.sort(
-          (a, b) => Number(b?.last?.sent_date || 0) - Number(a?.last?.sent_date || 0)
-        );
-        setThreads(list);
+
+      if (res.status === 401) {
+        // token invalid/expired → refreshUser may log you out depending on your auth logic
+        await refreshUser?.();
+        setThreads([]);
+        return;
       }
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        console.warn('[dashboard] threads failed', res.status, data?.error || data);
+        setThreads([]);
+        return;
+      }
+
+      const list = Array.isArray(data?.threads) ? data.threads : [];
+      list.sort(
+        (a, b) => Number(b?.last?.sent_date || 0) - Number(a?.last?.sent_date || 0)
+      );
+      setThreads(list);
     } catch (e) {
-      // silent for MVP
+      console.warn('[dashboard] threads error', String(e?.message || e));
     } finally {
       setLoadingThreads(false);
     }
   };
 
   useEffect(() => {
-    // ✅ REFRESH USER DATA when screen focuses
     refreshUser?.();
     fetchThreads();
-    
+
     const unsub = navigation.addListener('focus', () => {
       refreshUser?.();
       fetchThreads();
     });
-    
+
     return unsub;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [navigation, user?.id, serverUrl]);
+  }, [navigation, user?.id, serverUrl, authToken]);
 
   const filteredThreads = useMemo(() => {
     const q = String(searchText || '').trim().toLowerCase();
@@ -135,12 +208,12 @@ export default function DashboardScreen({ navigation }) {
               styles.content,
               {
                 paddingTop: insets.top + 16,
-                paddingBottom: Math.max(insets.bottom, 80), // extra bottom padding for floating button
+                paddingBottom: Math.max(insets.bottom, 80),
               },
             ]}
             keyboardShouldPersistTaps="handled"
           >
-            {/* 1) Welcome card (tap -> UserDetail) */}
+            {/* 1) Welcome card */}
             <TouchableOpacity
               style={[styles.card, styles.welcomeCard]}
               onPress={() => navigation.navigate('UserDetail')}
@@ -160,7 +233,16 @@ export default function DashboardScreen({ navigation }) {
 
                 <View style={styles.avatarWrap}>
                   {avatarUrl ? (
-                    <Image source={{ uri: avatarUrl }} style={styles.avatarImg} />
+                    <AuthImage
+                      uri={avatarUrl}
+                      authToken={authToken}
+                      style={styles.avatarImg}
+                      fallback={
+                        <Text style={styles.avatarInitials}>
+                          {initialsFromUser(user)}
+                        </Text>
+                      }
+                    />
                   ) : (
                     <Text style={styles.avatarInitials}>{initialsFromUser(user)}</Text>
                   )}
@@ -172,11 +254,11 @@ export default function DashboardScreen({ navigation }) {
             <View style={[styles.card, styles.balanceCard]}>
               <Text style={styles.balanceLabel}>Account Balance</Text>
               <Text style={styles.balanceValue}>
-                ${formatCurrency(user?.account_balance)}
+                ${Number(user?.account_balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </Text>
             </View>
 
-            {/* 3) Search messages - invisible card wrapper */}
+            {/* 3) Search messages */}
             <View style={styles.searchCard}>
               <View style={styles.searchInputWrapper}>
                 <Ionicons name="search" size={18} color="#9CA3AF" style={styles.searchIcon} />
@@ -193,7 +275,7 @@ export default function DashboardScreen({ navigation }) {
               </View>
             </View>
 
-            {/* 4) Threads - no header */}
+            {/* 4) Threads */}
             <View style={styles.card}>
               {loadingThreads && filteredThreads.length === 0 ? (
                 <Text style={styles.emptyText}>Loading…</Text>
@@ -222,7 +304,16 @@ export default function DashboardScreen({ navigation }) {
                     >
                       <View style={styles.threadAvatarWrap}>
                         {cAvatarUrl ? (
-                          <Image source={{ uri: cAvatarUrl }} style={styles.threadAvatarImg} />
+                          <AuthImage
+                            uri={cAvatarUrl}
+                            authToken={authToken}
+                            style={styles.threadAvatarImg}
+                            fallback={
+                              <Text style={styles.threadAvatarInitials}>
+                                {initialsFromUser(c)}
+                              </Text>
+                            }
+                          />
                         ) : (
                           <Text style={styles.threadAvatarInitials}>{initialsFromUser(c)}</Text>
                         )}
@@ -245,7 +336,7 @@ export default function DashboardScreen({ navigation }) {
             </View>
           </ScrollView>
 
-          {/* ✅ Floating "+" button (bottom right, above Android system tray) */}
+          {/* Floating "+" button */}
           <TouchableOpacity
             style={[styles.floatingButton, { bottom: insets.bottom + 20 }]}
             onPress={() => navigation.navigate('Contacts')}
@@ -271,11 +362,9 @@ const styles = StyleSheet.create({
     maxWidth: MAX_WIDTH,
     backgroundColor: '#111827',
   },
-
   content: {
     padding: 16,
   },
-
   card: {
     backgroundColor: '#020617',
     borderRadius: 12,
@@ -285,7 +374,6 @@ const styles = StyleSheet.create({
     borderColor: '#1F2937',
   },
 
-  // ✅ Welcome card: ~0.75" tall feel (tight)
   welcomeCard: {
     paddingVertical: 10,
     paddingHorizontal: 16,
@@ -298,6 +386,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
   },
+  welcomeTextCol: {
+    flex: 1,
+    minWidth: 0,
+    justifyContent: 'center',
+  },
   welcomeTitle: {
     fontSize: 16,
     fontWeight: '700',
@@ -309,8 +402,10 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#FFFFFF',
   },
+  missingHandle: {
+    color: '#F87171',
+  },
 
-  // ✅ smaller avatar
   avatarWrap: {
     width: 44,
     height: 44,
@@ -322,17 +417,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     overflow: 'hidden',
   },
-  avatarImg: {
-    width: '100%',
-    height: '100%',
-  },
+  avatarImg: { width: '100%', height: '100%' },
   avatarInitials: {
     color: '#93C5FD',
     fontWeight: '900',
     fontSize: 14,
   },
 
-  // ✅ Balance card: compact, single line, ~1cm tall
   balanceCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -353,7 +444,6 @@ const styles = StyleSheet.create({
     color: '#10B981',
   },
 
-  // ✅ Search card: invisible wrapper, no background/border
   searchCard: {
     marginBottom: 5,
     paddingHorizontal: 0,
@@ -378,20 +468,12 @@ const styles = StyleSheet.create({
     padding: 0,
   },
 
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#FFFFFF',
-    marginBottom: 8,
-  },
-
   emptyText: {
     color: '#9CA3AF',
     textAlign: 'center',
     paddingTop: 8,
   },
 
-  // ✅ Thread rows: reduced height, no top border on first item
   threadRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -414,10 +496,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     overflow: 'hidden',
   },
-  threadAvatarImg: {
-    width: '100%',
-    height: '100%',
-  },
+  threadAvatarImg: { width: '100%', height: '100%' },
   threadAvatarInitials: {
     color: '#93C5FD',
     fontWeight: '900',
@@ -437,17 +516,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     marginTop: 2,
   },
-  welcomeTextCol: {
-    flex: 1,
-    minWidth: 0,
-    justifyContent: 'center',
-  },
 
-  missingHandle: {
-    color: '#F87171', // red warning
-  },
-
-  // ✅ Floating "+" button (bottom right)
   floatingButton: {
     position: 'absolute',
     right: 20,
@@ -457,11 +526,22 @@ const styles = StyleSheet.create({
     backgroundColor: '#2563EB',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
-  },
 
+    // ✅ no "shadow*" on web
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 8,
+      },
+      web: {
+        boxShadow: '0px 4px 12px rgba(0,0,0,0.35)',
+      },
+      default: {},
+    }),
+  },
 });

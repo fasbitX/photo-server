@@ -1,5 +1,5 @@
 // TextScreen.js
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -9,29 +9,44 @@ import {
   FlatList,
   KeyboardAvoidingView,
   Platform,
-  Dimensions,
+  Image,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from './auth';
 
-const SCREEN_WIDTH = Dimensions.get('window').width;
 const MAX_WIDTH = 288; // match DashboardScreen container width
 
-export default function TextScreen({ route, navigation }) {
+function initialsFromUser(u) {
+  const a = String(u?.first_name || '').trim();
+  const b = String(u?.last_name || '').trim();
+  const i = `${a[0] || ''}${b[0] || ''}`.toUpperCase();
+  return i || '@';
+}
+
+function resolveUploadUrl(serverUrl, avatarPath) {
+  if (!serverUrl || !avatarPath) return null;
+  const base = String(serverUrl).replace(/\/+$/, '');
+  const clean = String(avatarPath).replace(/^\/+/, '');
+  return `${base}/uploads/${clean}`;
+}
+
+export default function TextScreen({ route }) {
   const { contact } = route.params || {};
   const { user, serverUrl } = useAuth();
+  const insets = useSafeAreaInsets();
 
   const [messages, setMessages] = useState([]);
-  const [conversationId, setConversationId] = useState(null);
   const [text, setText] = useState('');
   const [loading, setLoading] = useState(false);
 
   const timerRef = useRef(null);
 
-  const contactName =
-    `${contact?.first_name || ''} ${contact?.last_name || ''}`.trim() ||
-    contact?.email ||
-    'Chat';
+  const contactName = String(contact?.user_name || '').trim() || '@unknown';
+
+  const avatarUrl = useMemo(
+    () => resolveUploadUrl(serverUrl, contact?.avatar_path),
+    [serverUrl, contact?.avatar_path]
+  );
 
   const fetchThread = async () => {
     if (!user?.id || !contact?.id || !serverUrl) return;
@@ -48,10 +63,7 @@ export default function TextScreen({ route, navigation }) {
         }),
       });
       const data = await res.json();
-      if (res.ok) {
-        setConversationId(data.conversationId);
-        setMessages(data.messages || []);
-      }
+      if (res.ok) setMessages(data.messages || []);
     } finally {
       setLoading(false);
     }
@@ -100,9 +112,7 @@ export default function TextScreen({ route, navigation }) {
       });
       const data = await res.json();
 
-      if (res.ok && data.message) {
-        await fetchThread(); // reconcile optimistic
-      }
+      if (res.ok && data.message) await fetchThread(); // reconcile optimistic
     } catch (e) {
       await fetchThread(); // reconcile on error too
     }
@@ -112,29 +122,25 @@ export default function TextScreen({ route, navigation }) {
     <KeyboardAvoidingView
       style={styles.kav}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top + 44 : 0}
     >
       <View style={styles.outerContainer}>
         <View style={styles.container}>
-          {/* Dashboard-style header */}
-          <View style={styles.header}>
-            <TouchableOpacity
-              onPress={() => navigation.goBack()}
-              style={styles.backButton}
-              activeOpacity={0.6}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              accessibilityRole="button"
-              accessibilityLabel="Back"
-            >
-              <Ionicons name="chevron-back" size={28} color="#9CA3AF" />
-            </TouchableOpacity>
+          {/* Header Card (no back button; use Android system back) */}
+          <View style={[styles.headerWrap, { paddingTop: insets.top + 10 }]}>
+            <View style={styles.headerCard}>
+              <View style={styles.headerAvatarWrap}>
+                {avatarUrl ? (
+                  <Image source={{ uri: avatarUrl }} style={styles.headerAvatarImg} />
+                ) : (
+                  <Text style={styles.headerAvatarInitials}>{initialsFromUser(contact)}</Text>
+                )}
+              </View>
 
-            <Text style={styles.headerTitle} numberOfLines={1}>
-              {contactName}
-            </Text>
-
-            {/* spacer to keep title centered */}
-            <View style={styles.headerRightSpacer} />
+              <Text style={styles.headerCardTitle} numberOfLines={1}>
+                {contactName}
+              </Text>
+            </View>
           </View>
 
           {/* Content area */}
@@ -198,31 +204,48 @@ const styles = StyleSheet.create({
     backgroundColor: '#111827',
   },
 
-  // Dashboard-style header bar
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 20,
-    paddingTop: 50,
+  // Header Card (1cm-ish tall)
+  headerWrap: {
+    paddingHorizontal: 16,
+    paddingBottom: 10,
+  },
+  headerCard: {
+    height: 40,
+    borderRadius: 16,
     backgroundColor: '#020617',
-    borderBottomWidth: 1,
-    borderBottomColor: '#1F2937',
+    borderWidth: 1,
+    borderColor: '#1F2937',
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
-  backButton: {
-    padding: 12,
-    marginLeft: -12,
+  headerAvatarWrap: {
+    width: 26,
+    height: 26,
+    borderRadius: 999,
+    backgroundColor: '#0B1220',
+    borderWidth: 1,
+    borderColor: '#1F2937',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
   },
-  headerTitle: {
+  headerAvatarImg: {
+    width: '100%',
+    height: '100%',
+  },
+  headerAvatarInitials: {
+    color: '#93C5FD',
+    fontWeight: '900',
+    fontSize: 12,
+  },
+  headerCardTitle: {
     flex: 1,
-    textAlign: 'center',
-    fontSize: 18,
-    fontWeight: 'bold',
+    minWidth: 0,
     color: '#FFFFFF',
-    paddingHorizontal: 6,
-  },
-  headerRightSpacer: {
-    width: 28 + 24, // keeps title visually centered (matches back button footprint)
+    fontSize: 16,
+    fontWeight: '800',
   },
 
   // Content matches Dashboard padding

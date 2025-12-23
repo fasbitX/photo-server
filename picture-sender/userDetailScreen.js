@@ -240,43 +240,18 @@ export default function UserDetailScreen({ navigation }) {
             <Ionicons name="camera" size={18} color="#FFFFFF" />
           </TouchableOpacity>
         </View>
-
-        <Text style={styles.hintText}>Tap the camera to change your avatar.</Text>
       </View>
 
-      {/* Account info card */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Account Info</Text>
-
-        <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>Account #</Text>
-          <Text style={styles.infoValue}>{user?.account_number || 'N/A'}</Text>
-        </View>
-        <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>Real Name</Text>
-          <Text style={styles.infoValue} numberOfLines={1}>
-            {`${user?.first_name || ''} ${user?.last_name || ''}`.trim() || 'N/A'}
-          </Text>
-        </View>
-        <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>Email</Text>
-          <Text style={styles.infoValue} numberOfLines={1}>
-            {user?.email || 'N/A'}
-          </Text>
-        </View>
-        <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>Street</Text>
-          <Text style={styles.infoValue} numberOfLines={1}>
-            {user?.street_address || 'N/A'}
-          </Text>
-        </View>
-        <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>City/State</Text>
-          <Text style={styles.infoValue} numberOfLines={1}>
-            {`${user?.city || ''}, ${user?.state || ''} ${user?.zip || ''}`.trim() || 'N/A'}
-          </Text>
-        </View>
-      </View>
+    {/* Account info card - SIMPLE CLICKABLE VERSION */}
+        <TouchableOpacity 
+        style={styles.accountInfoCard}
+        onPress={() => navigation.navigate('AccountInfo')}
+        activeOpacity={0.85}
+        >
+        <Text style={styles.accountInfoTitle}>Account Info</Text>
+        
+        <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
+        </TouchableOpacity>
 
       {/* Search + add contacts */}
       <View style={styles.card}>
@@ -364,37 +339,19 @@ export default function UserDetailScreen({ navigation }) {
     >
       <View style={styles.outerContainer}>
         <View style={styles.container}>
-          {/* Header */}
-          <View style={[styles.header, { paddingTop: insets.top + 14 }]}>
-            <TouchableOpacity
-              onPress={() => navigation.goBack()}
-              style={styles.headerIconBtn}
-              activeOpacity={0.6}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              accessibilityRole="button"
-              accessibilityLabel="Back"
-            >
-              <Ionicons name="chevron-back" size={26} color="#9CA3AF" />
-            </TouchableOpacity>
-
-            <Text style={styles.headerTitle}>Profile</Text>
-
-            {/* spacer */}
-            <View style={{ width: 26 + 24 }} />
-          </View>
-
-          <FlatList
-            data={contacts}
-            keyExtractor={(item) => String(item.id)}
-            renderItem={renderContact}
-            ListHeaderComponent={ListHeader}
-            contentContainerStyle={{
-              padding: 16,
-              paddingBottom: Math.max(insets.bottom, 16),
-            }}
-            keyboardShouldPersistTaps="handled"
-            ListEmptyComponent={loadingContacts ? null : <Text style={styles.emptyText}>No contacts yet.</Text>}
-          />
+           <FlatList
+                data={contacts}
+                keyExtractor={(item) => String(item.id)}
+                renderItem={renderContact}
+                ListHeaderComponent={ListHeader}
+                contentContainerStyle={{
+                    padding: 16,
+                    paddingBottom: Math.max(insets.bottom, 16),
+                }}
+                keyboardShouldPersistTaps="handled"
+                ListEmptyComponent={loadingContacts ? null : <Text style={styles.emptyText}>No contacts yet.</Text>}
+                showsVerticalScrollIndicator={false}
+            />
         </View>
       </View>
     </KeyboardAvoidingView>
@@ -435,15 +392,15 @@ const styles = StyleSheet.create({
     padding: 12,
     marginLeft: -12,
   },
-
   card: {
     backgroundColor: '#020617',
     borderRadius: 12,
-    padding: 20,
+    padding: 16,  // CHANGED from 20 to 16
     marginBottom: 16,
     borderWidth: 1,
     borderColor: '#1F2937',
-  },
+    minHeight: 38,  // ADD this line (~1cm = 38px)
+},
   cardTitle: {
     fontSize: 18,
     fontWeight: '600',
@@ -489,9 +446,9 @@ const styles = StyleSheet.create({
   },
   cameraBtn: {
     position: 'absolute',
-    right: 0,
-    bottom: 0,
-    backgroundColor: '#2563EB',
+    right: 50,
+    bottom: -8,
+    backgroundColor: 'transparent',
     width: 36,
     height: 36,
     borderRadius: 999,
@@ -499,7 +456,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: '#1F2937',
-  },
+    },
 
   infoRow: {
     flexDirection: 'row',
@@ -662,4 +619,27 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 3,
   },
+    accountInfoCard: {
+    backgroundColor: '#020617',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#1F2937',
+    height: 48,  // CHANGED from minHeight/maxHeight to fixed height
+    flexDirection: 'row',
+    alignItems: 'center',  // This centers vertically
+    justifyContent: 'space-between',
+ },
+ chevronRow: {
+    alignItems: 'center',
+    justifyContent: 'center',
+ },
+ accountInfoTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    margin: 0,  // Remove any margin
+ },
+
 });

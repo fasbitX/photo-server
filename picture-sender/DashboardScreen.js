@@ -38,6 +38,14 @@ function toHandle(user) {
   return `@${(cleaned || fallback).trim()}`;
 }
 
+function formatCurrency(value) {
+  const num = parseFloat(value || 0);
+  return num.toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
 export default function DashboardScreen({ navigation }) {
   const { user, serverUrl, refreshUser } = useAuth();
   const insets = useSafeAreaInsets();
@@ -127,7 +135,7 @@ export default function DashboardScreen({ navigation }) {
               styles.content,
               {
                 paddingTop: insets.top + 16,
-                paddingBottom: Math.max(insets.bottom, 16),
+                paddingBottom: Math.max(insets.bottom, 80), // extra bottom padding for floating button
               },
             ]}
             keyboardShouldPersistTaps="handled"
@@ -161,48 +169,32 @@ export default function DashboardScreen({ navigation }) {
             </TouchableOpacity>
 
             {/* 2) Account Balance */}
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>Account Balance</Text>
-              <View style={styles.balanceRow}>
-                <Text style={styles.balanceValue}>
-                  ${parseFloat(user?.account_balance || 0).toFixed(2)}
-                </Text>
-              </View>
-            </View>
-
-            {/* 3) Search messages */}
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>Search Messages</Text>
-              <TextInput
-                value={searchText}
-                onChangeText={setSearchText}
-                placeholder="Search your threads/messages for words…"
-                placeholderTextColor="#9CA3AF"
-                style={styles.searchInput}
-                autoCorrect={false}
-                autoCapitalize="none"
-                returnKeyType="search"
-              />
-              <Text style={styles.hintText}>
-                This searches your existing message threads (not new people).
+            <View style={[styles.card, styles.balanceCard]}>
+              <Text style={styles.balanceLabel}>Account Balance</Text>
+              <Text style={styles.balanceValue}>
+                ${formatCurrency(user?.account_balance)}
               </Text>
             </View>
 
-            {/* 4) Threads (newest at top) */}
-            <View style={styles.card}>
-              <View style={styles.threadsHeaderRow}>
-                <Text style={styles.cardTitle}>Threads</Text>
-
-                <TouchableOpacity
-                  onPress={() => navigation.navigate('Contacts')}
-                  activeOpacity={0.85}
-                  style={styles.smallLinkBtn}
-                >
-                  <Ionicons name="person-add" size={16} color="#93C5FD" />
-                  <Text style={styles.smallLinkText}>Contacts</Text>
-                </TouchableOpacity>
+            {/* 3) Search messages - invisible card wrapper */}
+            <View style={styles.searchCard}>
+              <View style={styles.searchInputWrapper}>
+                <Ionicons name="search" size={18} color="#9CA3AF" style={styles.searchIcon} />
+                <TextInput
+                  value={searchText}
+                  onChangeText={setSearchText}
+                  placeholder="Search Messages"
+                  placeholderTextColor="#9CA3AF"
+                  style={styles.searchInput}
+                  autoCorrect={false}
+                  autoCapitalize="none"
+                  returnKeyType="search"
+                />
               </View>
+            </View>
 
+            {/* 4) Threads - no header */}
+            <View style={styles.card}>
               {loadingThreads && filteredThreads.length === 0 ? (
                 <Text style={styles.emptyText}>Loading…</Text>
               ) : filteredThreads.length === 0 ? (
@@ -210,7 +202,7 @@ export default function DashboardScreen({ navigation }) {
                   {searchText.trim() ? 'No matches.' : 'No threads yet.'}
                 </Text>
               ) : (
-                filteredThreads.map((t) => {
+                filteredThreads.map((t, idx) => {
                   const c = t?.contact || {};
                   const cName =
                     String(c?.user_name || '').trim() ||
@@ -224,7 +216,7 @@ export default function DashboardScreen({ navigation }) {
                   return (
                     <TouchableOpacity
                       key={String(t?.conversation_id || `${c?.id || 'x'}`)}
-                      style={styles.threadRow}
+                      style={[styles.threadRow, idx === 0 && styles.threadRowFirst]}
                       onPress={() => openThread(t)}
                       activeOpacity={0.85}
                     >
@@ -252,6 +244,15 @@ export default function DashboardScreen({ navigation }) {
               )}
             </View>
           </ScrollView>
+
+          {/* ✅ Floating "+" button (bottom right, above Android system tray) */}
+          <TouchableOpacity
+            style={[styles.floatingButton, { bottom: insets.bottom + 20 }]}
+            onPress={() => navigation.navigate('Contacts')}
+            activeOpacity={0.85}
+          >
+            <Ionicons name="add" size={28} color="#FFFFFF" />
+          </TouchableOpacity>
         </View>
       </View>
     </KeyboardAvoidingView>
@@ -279,7 +280,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#020617',
     borderRadius: 12,
     padding: 20,
-    marginBottom: 16,
+    marginBottom: 5,
     borderWidth: 1,
     borderColor: '#1F2937',
   },
@@ -304,7 +305,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   handleText: {
-    fontSize: 16,
+    fontSize: 13,
     fontWeight: '800',
     color: '#FFFFFF',
   },
@@ -331,26 +332,35 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
 
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#FFFFFF',
-    marginBottom: 8,
-  },
-
-  balanceRow: {
+  // ✅ Balance card: compact, single line, ~1cm tall
+  balanceCard: {
     flexDirection: 'row',
-    alignItems: 'baseline',
+    alignItems: 'center',
     justifyContent: 'space-between',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    minHeight: 38,
+    maxHeight: 44,
+  },
+  balanceLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#9CA3AF',
   },
   balanceValue: {
-    fontSize: 24,
+    fontSize: 15,
     fontWeight: '900',
-    color: '#2563EB',
+    color: '#10B981',
   },
 
-  searchInput: {
-    color: '#FFF',
+  // ✅ Search card: invisible wrapper, no background/border
+  searchCard: {
+    marginBottom: 5,
+    paddingHorizontal: 0,
+  },
+  searchInputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: '#0B1220',
     borderWidth: 1,
     borderColor: '#1F2937',
@@ -358,33 +368,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
-  hintText: {
-    color: '#9CA3AF',
-    fontSize: 12,
-    marginTop: 10,
+  searchIcon: {
+    marginRight: 8,
+  },
+  searchInput: {
+    flex: 1,
+    color: '#FFF',
+    fontSize: 14,
+    padding: 0,
   },
 
-  threadsHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 4,
-  },
-  smallLinkBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: '#1F2937',
-    backgroundColor: '#0B1220',
-  },
-  smallLinkText: {
-    color: '#93C5FD',
-    fontSize: 12,
-    fontWeight: '800',
+  cardTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    marginBottom: 8,
   },
 
   emptyText: {
@@ -393,17 +391,21 @@ const styles = StyleSheet.create({
     paddingTop: 8,
   },
 
+  // ✅ Thread rows: reduced height, no top border on first item
   threadRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    paddingVertical: 12,
+    paddingVertical: 8,
     borderTopWidth: 1,
     borderTopColor: '#1F2937',
   },
+  threadRowFirst: {
+    borderTopWidth: 0,
+  },
   threadAvatarWrap: {
-    width: 40,
-    height: 40,
+    width: 36,
+    height: 36,
     borderRadius: 999,
     backgroundColor: '#0B1220',
     borderWidth: 1,
@@ -419,6 +421,7 @@ const styles = StyleSheet.create({
   threadAvatarInitials: {
     color: '#93C5FD',
     fontWeight: '900',
+    fontSize: 12,
   },
   threadTextWrap: {
     flex: 1,
@@ -427,12 +430,12 @@ const styles = StyleSheet.create({
   threadName: {
     color: '#FFF',
     fontWeight: '900',
-    fontSize: 14,
+    fontSize: 13,
   },
   threadPreview: {
     color: '#9CA3AF',
-    fontSize: 12,
-    marginTop: 3,
+    fontSize: 11,
+    marginTop: 2,
   },
   welcomeTextCol: {
     flex: 1,
@@ -442,6 +445,23 @@ const styles = StyleSheet.create({
 
   missingHandle: {
     color: '#F87171', // red warning
+  },
+
+  // ✅ Floating "+" button (bottom right)
+  floatingButton: {
+    position: 'absolute',
+    right: 20,
+    width: 56,
+    height: 56,
+    borderRadius: 999,
+    backgroundColor: '#2563EB',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
   },
 
 });

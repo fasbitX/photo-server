@@ -235,7 +235,71 @@ function registerMobileApiRoutes(app) {
     }
   });
 
-  // ──────────────────────────────────────────────
+    // ──────────────────────────────────────────────
+    // USER INFORMATION (MOBILE)
+    // ──────────────────────────────────────────────
+   
+    app.post('/api/mobile/user/update', express.json(), async (req, res) => {
+    try {
+        const {
+        userId,
+        first_name,
+        last_name,
+        user_name,
+        street_address,
+        city,
+        state,
+        zip,
+        phone,
+        gender,
+        date_of_birth,
+        timezone,
+        } = req.body;
+
+        if (!userId) {
+        return res.status(400).json({ error: 'User ID required' });
+        }
+
+        // Build update object with only provided fields
+        const updates = {};
+        if (first_name !== undefined) updates.first_name = first_name;
+        if (last_name !== undefined) updates.last_name = last_name;
+        if (user_name !== undefined) updates.user_name = user_name;
+        if (street_address !== undefined) updates.street_address = street_address;
+        if (city !== undefined) updates.city = city;
+        if (state !== undefined) updates.state = state;
+        if (zip !== undefined) updates.zip = zip;
+        if (phone !== undefined) updates.phone = phone;
+        if (gender !== undefined) updates.gender = gender;
+        if (date_of_birth !== undefined) updates.date_of_birth = date_of_birth;
+        if (timezone !== undefined) updates.timezone = timezone;
+
+        const success = await updateUser(userId, updates);
+
+        if (!success) {
+        return res.status(404).json({ error: 'User not found or update failed' });
+        }
+
+        res.json({ ok: true, message: 'User updated successfully' });
+
+    } catch (err) {
+        console.error('User update error:', err);
+        
+        // Handle unique constraint violations
+        if (err.code === '23505') {
+        if (err.constraint === 'users_phone_key') {
+            return res.status(400).json({ error: 'Phone number already in use' });
+        }
+        if (err.constraint === 'users_user_name_key') {
+            return res.status(400).json({ error: 'Username already taken' });
+        }
+        }
+        
+        res.status(500).json({ error: 'Failed to update user' });
+    }
+    });
+
+    // ──────────────────────────────────────────────
     // CONTACTS (MOBILE)
     // ──────────────────────────────────────────────
 

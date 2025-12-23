@@ -1,4 +1,9 @@
 // routes-media.js
+/* The purpose of this module is to provide routes for serving private media files
+ * and avatars for authenticated users. It includes middleware for authentication
+ * and authorization, ensuring that only authorized users can access specific files.
+ */
+
 const path = require('path');
 const fs = require('fs');
 const {

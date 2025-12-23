@@ -1,3 +1,20 @@
+// DashboardScreen.js
+/* The purpose of this file is to provide a React Native component that
+represents the dashboard screen of an application. It includes various
+UI elements such as cards, text inputs, and buttons, and it also handles
+state management and data fetching using hooks like `useState` and
+`useEffect`. The component is designed to be responsive and adapt to
+different screen sizes, with a maximum width of 300 units. It also includes
+a custom hook `useAuth` for authentication purposes and a function
+`initialsFromUser` to generate initials from a user's first and last name.
+Additionally, it includes a function`resolveUploadUrl` to handle image URLs
+and a custom component `AuthImage` for displaying images with authentication
+headers. The main component `DashboardScreen` fetches user threads and
+displays them in a scrollable list, with options to search and navigate to 
+individual threads or contacts. It also includes a floating button for
+adding new contacts. */
+
+
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
@@ -14,7 +31,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from './auth';
 
-const MAX_WIDTH = 300; // sets the maximum width of the screen
+const MAX_WIDTH = 300;
+
+// Web "6 inch" viewport approximation: CSS assumes 96px per inch.
+const PHONE_HEIGHT_IN = 6;
+const CSS_PX_PER_IN = 96;
+const PHONE_HEIGHT_PX = PHONE_HEIGHT_IN * CSS_PX_PER_IN; // 576px
 
 function initialsFromUser(u) {
   const a = String(u?.first_name || '').trim();
@@ -29,7 +51,6 @@ function resolveUploadUrl(serverUrl, path) {
   const base = String(serverUrl).replace(/\/+$/, '');
   const raw = String(path).trim();
 
-  // already absolute?
   if (/^https?:\/\//i.test(raw)) return raw;
 
   const clean = raw.replace(/^\/+/, '');
@@ -90,7 +111,7 @@ function AuthImage({ uri, authToken, style, fallback }) {
   if (!uri || failed) return fallback || null;
 
   if (Platform.OS === 'web') {
-    if (!webObjectUrl) return fallback || null; // loading / failed
+    if (!webObjectUrl) return fallback || null;
     return <Image source={{ uri: webObjectUrl }} style={style} />;
   }
 
@@ -134,12 +155,11 @@ export default function DashboardScreen({ navigation }) {
 
       const res = await fetch(url, {
         method: 'POST',
-        headers: getAuthHeaders(), // ✅ includes Authorization: Bearer <token>
+        headers: getAuthHeaders(),
         body: JSON.stringify({ requesterId: user.id, limit: 100 }),
       });
 
       if (res.status === 401) {
-        // token invalid/expired → refreshUser may log you out depending on your auth logic
         await refreshUser?.();
         setThreads([]);
         return;
@@ -202,149 +222,165 @@ export default function DashboardScreen({ navigation }) {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={keyboardOffset}
     >
+      {/* Outer page */}
       <View style={styles.outerContainer}>
-        <View style={styles.container}>
-          <ScrollView
-            contentContainerStyle={[
-              styles.content,
-              {
-                paddingTop: insets.top + 16,
-                paddingBottom: Math.max(insets.bottom, 80),
-              },
-            ]}
-            keyboardShouldPersistTaps="handled"
-          >
-            {/* 1) Welcome card */}
+        {/* Phone viewport (fixed height on web, full height on native) */}
+        <View style={styles.phoneFrame}>
+          <View style={styles.container}>
+            <ScrollView
+              style={styles.scroll}
+              contentContainerStyle={[
+                styles.content,
+                {
+                  paddingTop: insets.top + 16,
+                  paddingBottom: Math.max(insets.bottom, 80),
+                },
+              ]}
+              keyboardShouldPersistTaps="handled"
+            >
+              {/* 1) Welcome card */}
+              <TouchableOpacity
+                style={[styles.card, styles.welcomeCard]}
+                onPress={() => navigation.navigate('UserDetail')}
+                activeOpacity={0.85}
+              >
+                <View style={styles.welcomeRow}>
+                  <View style={styles.welcomeTextCol}>
+                    <Text style={styles.welcomeTitle}>Welcome</Text>
+
+                    <Text
+                      style={[styles.handleText, !handle && styles.missingHandle]}
+                      numberOfLines={1}
+                    >
+                      {handle || 'MISSING USERNAME'}
+                    </Text>
+                  </View>
+
+                  <View style={styles.avatarWrap}>
+                    {avatarUrl ? (
+                      <AuthImage
+                        uri={avatarUrl}
+                        authToken={authToken}
+                        style={styles.avatarImg}
+                        fallback={
+                          <Text style={styles.avatarInitials}>
+                            {initialsFromUser(user)}
+                          </Text>
+                        }
+                      />
+                    ) : (
+                      <Text style={styles.avatarInitials}>{initialsFromUser(user)}</Text>
+                    )}
+                  </View>
+                </View>
+              </TouchableOpacity>
+
+              {/* 2) Account Balance */}
+              <View style={[styles.card, styles.balanceCard]}>
+                <Text style={styles.balanceLabel}>Account Balance</Text>
+                <Text style={styles.balanceValue}>
+                  $
+                  {Number(user?.account_balance || 0).toLocaleString('en-US', {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })}
+                </Text>
+              </View>
+
+              {/* 3) Search messages */}
+              <View style={styles.searchCard}>
+                <View style={styles.searchInputWrapper}>
+                  <Ionicons
+                    name="search"
+                    size={18}
+                    color="#9CA3AF"
+                    style={styles.searchIcon}
+                  />
+                  <TextInput
+                    value={searchText}
+                    onChangeText={setSearchText}
+                    placeholder="Search Messages"
+                    placeholderTextColor="#9CA3AF"
+                    style={styles.searchInput}
+                    autoCorrect={false}
+                    autoCapitalize="none"
+                    returnKeyType="search"
+                  />
+                </View>
+              </View>
+
+              {/* 4) Threads */}
+              <View style={styles.card}>
+                {loadingThreads && filteredThreads.length === 0 ? (
+                  <Text style={styles.emptyText}>Loading…</Text>
+                ) : filteredThreads.length === 0 ? (
+                  <Text style={styles.emptyText}>
+                    {searchText.trim() ? 'No matches.' : 'No threads yet.'}
+                  </Text>
+                ) : (
+                  filteredThreads.map((t, idx) => {
+                    const c = t?.contact || {};
+                    const cName =
+                      String(c?.user_name || '').trim() ||
+                      `${c?.first_name || ''} ${c?.last_name || ''}`.trim() ||
+                      c?.email ||
+                      'Contact';
+
+                    const cAvatarUrl = resolveUploadUrl(serverUrl, c?.avatar_path);
+                    const preview = String(t?.last?.content || '').trim();
+
+                    return (
+                      <TouchableOpacity
+                        key={String(t?.conversation_id || `${c?.id || 'x'}`)}
+                        style={[styles.threadRow, idx === 0 && styles.threadRowFirst]}
+                        onPress={() => openThread(t)}
+                        activeOpacity={0.85}
+                      >
+                        <View style={styles.threadAvatarWrap}>
+                          {cAvatarUrl ? (
+                            <AuthImage
+                              uri={cAvatarUrl}
+                              authToken={authToken}
+                              style={styles.threadAvatarImg}
+                              fallback={
+                                <Text style={styles.threadAvatarInitials}>
+                                  {initialsFromUser(c)}
+                                </Text>
+                              }
+                            />
+                          ) : (
+                            <Text style={styles.threadAvatarInitials}>
+                              {initialsFromUser(c)}
+                            </Text>
+                          )}
+                        </View>
+
+                        <View style={styles.threadTextWrap}>
+                          <Text style={styles.threadName} numberOfLines={1}>
+                            {cName}
+                          </Text>
+                          <Text style={styles.threadPreview} numberOfLines={1}>
+                            {preview || '(no text)'}
+                          </Text>
+                        </View>
+
+                        <Ionicons name="chevron-forward" size={20} color="#334155" />
+                      </TouchableOpacity>
+                    );
+                  })
+                )}
+              </View>
+            </ScrollView>
+
+            {/* Floating "+" button (stays inside the phone viewport) */}
             <TouchableOpacity
-              style={[styles.card, styles.welcomeCard]}
-              onPress={() => navigation.navigate('UserDetail')}
+              style={[styles.floatingButton, { bottom: insets.bottom + 20 }]}
+              onPress={() => navigation.navigate('Contacts')}
               activeOpacity={0.85}
             >
-              <View style={styles.welcomeRow}>
-                <View style={styles.welcomeTextCol}>
-                  <Text style={styles.welcomeTitle}>Welcome</Text>
-
-                  <Text
-                    style={[styles.handleText, !handle && styles.missingHandle]}
-                    numberOfLines={1}
-                  >
-                    {handle || 'MISSING USERNAME'}
-                  </Text>
-                </View>
-
-                <View style={styles.avatarWrap}>
-                  {avatarUrl ? (
-                    <AuthImage
-                      uri={avatarUrl}
-                      authToken={authToken}
-                      style={styles.avatarImg}
-                      fallback={
-                        <Text style={styles.avatarInitials}>
-                          {initialsFromUser(user)}
-                        </Text>
-                      }
-                    />
-                  ) : (
-                    <Text style={styles.avatarInitials}>{initialsFromUser(user)}</Text>
-                  )}
-                </View>
-              </View>
+              <Ionicons name="add" size={28} color="#FFFFFF" />
             </TouchableOpacity>
-
-            {/* 2) Account Balance */}
-            <View style={[styles.card, styles.balanceCard]}>
-              <Text style={styles.balanceLabel}>Account Balance</Text>
-              <Text style={styles.balanceValue}>
-                ${Number(user?.account_balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </Text>
-            </View>
-
-            {/* 3) Search messages */}
-            <View style={styles.searchCard}>
-              <View style={styles.searchInputWrapper}>
-                <Ionicons name="search" size={18} color="#9CA3AF" style={styles.searchIcon} />
-                <TextInput
-                  value={searchText}
-                  onChangeText={setSearchText}
-                  placeholder="Search Messages"
-                  placeholderTextColor="#9CA3AF"
-                  style={styles.searchInput}
-                  autoCorrect={false}
-                  autoCapitalize="none"
-                  returnKeyType="search"
-                />
-              </View>
-            </View>
-
-            {/* 4) Threads */}
-            <View style={styles.card}>
-              {loadingThreads && filteredThreads.length === 0 ? (
-                <Text style={styles.emptyText}>Loading…</Text>
-              ) : filteredThreads.length === 0 ? (
-                <Text style={styles.emptyText}>
-                  {searchText.trim() ? 'No matches.' : 'No threads yet.'}
-                </Text>
-              ) : (
-                filteredThreads.map((t, idx) => {
-                  const c = t?.contact || {};
-                  const cName =
-                    String(c?.user_name || '').trim() ||
-                    `${c?.first_name || ''} ${c?.last_name || ''}`.trim() ||
-                    c?.email ||
-                    'Contact';
-
-                  const cAvatarUrl = resolveUploadUrl(serverUrl, c?.avatar_path);
-                  const preview = String(t?.last?.content || '').trim();
-
-                  return (
-                    <TouchableOpacity
-                      key={String(t?.conversation_id || `${c?.id || 'x'}`)}
-                      style={[styles.threadRow, idx === 0 && styles.threadRowFirst]}
-                      onPress={() => openThread(t)}
-                      activeOpacity={0.85}
-                    >
-                      <View style={styles.threadAvatarWrap}>
-                        {cAvatarUrl ? (
-                          <AuthImage
-                            uri={cAvatarUrl}
-                            authToken={authToken}
-                            style={styles.threadAvatarImg}
-                            fallback={
-                              <Text style={styles.threadAvatarInitials}>
-                                {initialsFromUser(c)}
-                              </Text>
-                            }
-                          />
-                        ) : (
-                          <Text style={styles.threadAvatarInitials}>{initialsFromUser(c)}</Text>
-                        )}
-                      </View>
-
-                      <View style={styles.threadTextWrap}>
-                        <Text style={styles.threadName} numberOfLines={1}>
-                          {cName}
-                        </Text>
-                        <Text style={styles.threadPreview} numberOfLines={1}>
-                          {preview || '(no text)'}
-                        </Text>
-                      </View>
-
-                      <Ionicons name="chevron-forward" size={20} color="#334155" />
-                    </TouchableOpacity>
-                  );
-                })
-              )}
-            </View>
-          </ScrollView>
-
-          {/* Floating "+" button */}
-          <TouchableOpacity
-            style={[styles.floatingButton, { bottom: insets.bottom + 20 }]}
-            onPress={() => navigation.navigate('Contacts')}
-            activeOpacity={0.85}
-          >
-            <Ionicons name="add" size={28} color="#FFFFFF" />
-          </TouchableOpacity>
+          </View>
         </View>
       </View>
     </KeyboardAvoidingView>
@@ -352,20 +388,49 @@ export default function DashboardScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
+  // whole page behind the “phone”
   outerContainer: {
     flex: 1,
     backgroundColor: '#000000',
     alignItems: 'center',
+    justifyContent: 'flex-start',
+    paddingVertical: 16,
   },
+
+  // ✅ this is the “6 inch screen” limit (web only)
+  phoneFrame: Platform.select({
+    web: {
+      width: '100%',
+      maxWidth: MAX_WIDTH,
+      height: PHONE_HEIGHT_PX, // ~6 inches
+      overflow: 'hidden', // content scrolls inside ScrollView
+      backgroundColor: '#111827',
+      borderRadius: 18,
+      borderWidth: 1,
+      borderColor: '#1F2937',
+      boxShadow: '0px 10px 30px rgba(0,0,0,0.45)',
+    },
+    default: {
+      flex: 1, // native uses the real phone height
+      width: '100%',
+      maxWidth: MAX_WIDTH,
+      backgroundColor: '#111827',
+    },
+  }),
+
   container: {
     flex: 1,
     width: '100%',
-    maxWidth: MAX_WIDTH,
     backgroundColor: '#111827',
   },
+
+  // important: ScrollView must be constrained by the phoneFrame height
+  scroll: { flex: 1 },
+
   content: {
     padding: 16,
   },
+
   card: {
     backgroundColor: '#020617',
     borderRadius: 12,
@@ -527,8 +592,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#2563EB',
     alignItems: 'center',
     justifyContent: 'center',
-
-    // ✅ no "shadow*" on web
     ...Platform.select({
       ios: {
         shadowColor: '#000',

@@ -277,18 +277,13 @@ export default function UserDetailScreen({ navigation }) {
           </View>
 
           <TouchableOpacity
-            onPress={openAvatarMenu}
-            style={[
-              styles.cameraBtn,
-              // OPTIONAL disable styling: fade while uploading
-              avatarUploading ? { opacity: 0.5 } : null,
-            ]}
+            onPress={() => navigation.navigate('Avatar')}
+            style={styles.cameraBtn}
             activeOpacity={0.85}
             accessibilityRole="button"
             accessibilityLabel="Change avatar"
-            // OPTIONAL disable block:
-            disabled={avatarUploading}
-          >
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            >
             <Ionicons name="camera" size={18} color="#FFFFFF" />
           </TouchableOpacity>
         </View>
@@ -501,6 +496,8 @@ const styles = StyleSheet.create({
     right: 50,
     bottom: -8,
     backgroundColor: 'transparent',
+    zIndex: 10,
+    elevation: 10,
     width: 36,
     height: 36,
     borderRadius: 999,

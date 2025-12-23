@@ -31,6 +31,8 @@ import MessagesScreen from './MessagesScreen';
 import TextScreen from './TextScreen';
 import UserDetailScreen from './userDetailScreen';
 import AccountInfoScreen from './AccountInfoScreen';
+import AvatarScreen from './AvatarScreen';
+
 
 const Stack = createNativeStackNavigator();
 
@@ -324,6 +326,7 @@ function AppNavigator() {
           <Stack.Screen name="Text" component={TextScreen} />
           <Stack.Screen name="UserDetail" component={UserDetailScreen} />
           <Stack.Screen name="AccountInfo" component={AccountInfoScreen} />
+          <Stack.Screen name="Avatar" component={AvatarScreen} />
           
         </>
       ) : (

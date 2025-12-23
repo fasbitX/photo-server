@@ -21,10 +21,15 @@ function safeServerBase(serverUrl) {
   return String(serverUrl || '').replace(/\/+$/, '');
 }
 
-async function postJson(url, body, signal) {
+async function postJson(url, body, signal, authToken) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (authToken) {
+    headers['Authorization'] = `Bearer ${authToken}`;
+  }
+  
   const res = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify(body || {}),
     signal,
   });
@@ -55,7 +60,7 @@ function normalizeNoAt(raw) {
 }
 
 export default function ContactScreen({ navigation }) {
-  const { user, serverUrl } = useAuth();
+  const { user, authToken, serverUrl } = useAuth();
 
   // Saved list vs live-search results list
   const [mode, setMode] = useState('saved'); // 'saved' | 'search'
@@ -70,7 +75,6 @@ export default function ContactScreen({ navigation }) {
   const base = safeServerBase(serverUrl);
 
   const notify = (title, message) => {
-    // RN-web Alert can be inconsistent; use window.alert on web for guaranteed visibility.
     if (Platform.OS === 'web' && typeof window !== 'undefined' && window.alert) {
       window.alert(`${title}: ${message}`);
       return;
@@ -90,7 +94,6 @@ export default function ContactScreen({ navigation }) {
     });
   };
 
-
   const MIN_CHARS = 3;
   const DEBOUNCE_MS = 300;
 
@@ -104,14 +107,16 @@ export default function ContactScreen({ navigation }) {
   }, [value]);
 
   const loadSaved = useCallback(async () => {
-    if (!base) return;
-    if (!user?.id) return;
+    if (!base || !user?.id || !authToken) return;
 
     setLoadingSaved(true);
     try {
-      const data = await postJson(`${base}/api/mobile/contacts/list`, {
-        requesterId: user.id,
-      });
+      const data = await postJson(
+        `${base}/api/mobile/contacts/list`,
+        { requesterId: user.id },
+        null,
+        authToken
+      );
       setSaved(Array.isArray(data?.contacts) ? data.contacts : []);
     } catch (err) {
       Alert.alert(
@@ -121,7 +126,7 @@ export default function ContactScreen({ navigation }) {
     } finally {
       setLoadingSaved(false);
     }
-  }, [base, user?.id]);
+  }, [base, user?.id, authToken]);
 
   useFocusEffect(
     useCallback(() => {
@@ -133,22 +138,18 @@ export default function ContactScreen({ navigation }) {
     if (abortRef.current) {
       try {
         abortRef.current.abort();
-      } catch {
-        // ignore
-      }
+      } catch {}
     }
     abortRef.current = null;
   };
 
   const doLiveSearch = useCallback(
     async (raw) => {
-      if (!base) return;
-      if (!user?.id) return;
+      if (!base || !user?.id || !authToken) return;
 
       const qNoAt = normalizeNoAt(raw);
       const qPhone = normalizePhone(raw);
 
-      // Gate: do nothing (and clear) until we have at least 3 characters.
       if (qNoAt.length < MIN_CHARS && qPhone.length < MIN_CHARS) {
         stopInFlightSearch();
         setSearching(false);
@@ -168,11 +169,11 @@ export default function ContactScreen({ navigation }) {
         const data = await postJson(
           `${base}/api/mobile/contacts/search-any`,
           { requesterId: user.id, q: raw },
-          controller.signal
+          controller.signal,
+          authToken
         );
 
         if (controller.signal.aborted) return;
-
         setResults(Array.isArray(data?.results) ? data.results : []);
       } catch (err) {
         if (controller.signal.aborted) return;
@@ -181,19 +182,15 @@ export default function ContactScreen({ navigation }) {
         if (!controller.signal.aborted) setSearching(false);
       }
     },
-    [base, user?.id]
+    [base, user?.id, authToken]
   );
 
   const onChangeSearch = (text) => {
     setValue(text);
-
-    // Cancel any pending debounce
     if (debounceTimerRef.current) {
       clearTimeout(debounceTimerRef.current);
       debounceTimerRef.current = null;
     }
-
-    // Schedule a debounced search
     debounceTimerRef.current = setTimeout(() => {
       doLiveSearch(text);
     }, DEBOUNCE_MS);
@@ -207,13 +204,15 @@ export default function ContactScreen({ navigation }) {
       (contact?.user_name ? String(contact.user_name).replace(/^@/, '') : '') ||
       'Contact';
 
-    if (!base || !user?.id) return;
+    if (!base || !user?.id || !authToken) return;
 
     try {
-      await postJson(`${base}/api/mobile/contacts/add`, {
-        requesterId: user.id,
-        contactUserId,
-      });
+      await postJson(
+        `${base}/api/mobile/contacts/add`,
+        { requesterId: user.id, contactUserId },
+        null,
+        authToken
+      );
       Alert.alert('Added', `Contact ${displayName} added to saved list.`);
       await loadSaved();
       setMode('saved');
@@ -223,7 +222,7 @@ export default function ContactScreen({ navigation }) {
   };
 
   const remove = async (contactUserId, contactLabel = 'Contact') => {
-    if (!base || !user?.id) return;
+    if (!base || !user?.id || !authToken) return;
 
     const ok = await confirmDialog(
       'Remove contact',
@@ -232,10 +231,12 @@ export default function ContactScreen({ navigation }) {
     if (!ok) return;
 
     try {
-      await postJson(`${base}/api/mobile/contacts/remove`, {
-        requesterId: user.id,
-        contactUserId,
-      });
+      await postJson(
+        `${base}/api/mobile/contacts/remove`,
+        { requesterId: user.id, contactUserId },
+        null,
+        authToken
+      );
       await loadSaved();
       setMode('saved');
       notify('Removed', `${contactLabel} removed from saved list.`);
@@ -246,10 +247,7 @@ export default function ContactScreen({ navigation }) {
 
   const openContact = (contact, isSaved) => {
     if (!contact) return;
-    navigation.navigate('ContactDetail', {
-      contact,
-      isSaved: !!isSaved,
-    });
+    navigation.navigate('ContactDetail', { contact, isSaved: !!isSaved });
   };
 
   const renderRow = ({ item, savedMode }) => {
@@ -280,7 +278,7 @@ export default function ContactScreen({ navigation }) {
             style={styles.rowBtnDanger}
             onPress={() => remove(item.id, name)}
           >
-            <Ionicons name="trash-outline" size={18} color="#FCA5A5" />
+            <Ionicons name="trash-outline" size={18} color="#DC2626" />
           </TouchableOpacity>
         ) : (
           <TouchableOpacity style={styles.rowBtn} onPress={() => add(item)}>
@@ -294,7 +292,6 @@ export default function ContactScreen({ navigation }) {
   return (
     <View style={styles.outerContainer}>
       <View style={styles.container}>
-        {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity
             onPress={() => navigation.goBack()}
@@ -303,13 +300,10 @@ export default function ContactScreen({ navigation }) {
           >
             <Ionicons name="arrow-back" size={22} color="#E5E7EB" />
           </TouchableOpacity>
-
           <Text style={styles.headerTitle}>Contacts</Text>
-
           <View style={styles.headerBtn} />
         </View>
 
-        {/* Search box (live search, unified) */}
         <View style={styles.searchCard}>
           <View style={styles.searchHeaderRow}>
             <Text style={styles.label}>Search</Text>
@@ -326,12 +320,7 @@ export default function ContactScreen({ navigation }) {
           </View>
 
           <View style={styles.searchRow}>
-            <Ionicons
-              name="search"
-              size={16}
-              color="#9CA3AF"
-              style={styles.searchIcon}
-            />
+            <Ionicons name="search" size={16} color="#9CA3AF" style={styles.searchIcon} />
             <TextInput
               style={styles.input}
               placeholder="Phone, email, or username"
@@ -342,10 +331,7 @@ export default function ContactScreen({ navigation }) {
               onChangeText={onChangeSearch}
               onSubmitEditing={() => doLiveSearch(value)}
               returnKeyType="search"
-              keyboardType={
-                // If the user started typing digits, bring up phone keypad; otherwise default
-                normalizePhone(value).length > 0 ? 'phone-pad' : 'default'
-              }
+              keyboardType={normalizePhone(value).length > 0 ? 'phone-pad' : 'default'}
             />
             {!!value && (
               <TouchableOpacity
@@ -362,26 +348,20 @@ export default function ContactScreen({ navigation }) {
             )}
           </View>
 
-          {/* Saved / Results toggle stays, but results populate automatically */}
           <View style={styles.modeRow}>
             <TouchableOpacity
               style={[styles.modeChip, mode === 'saved' && styles.modeChipActive]}
               onPress={() => setMode('saved')}
             >
-              <Text
-                style={[styles.modeChipText, mode === 'saved' && styles.modeChipTextActive]}
-              >
+              <Text style={[styles.modeChipText, mode === 'saved' && styles.modeChipTextActive]}>
                 Saved
               </Text>
             </TouchableOpacity>
-
             <TouchableOpacity
               style={[styles.modeChip, mode === 'search' && styles.modeChipActive]}
               onPress={() => setMode('search')}
             >
-              <Text
-                style={[styles.modeChipText, mode === 'search' && styles.modeChipTextActive]}
-              >
+              <Text style={[styles.modeChipText, mode === 'search' && styles.modeChipTextActive]}>
                 Results
               </Text>
             </TouchableOpacity>
@@ -389,12 +369,11 @@ export default function ContactScreen({ navigation }) {
 
           <Text style={styles.help}>
             • Phone: punctuation ignored (802-555-2222 matches 8025552222){'\n'}
-            • Username: “@” ignored{'\n'}
-            • Email: “@” ignored
+            • Username: "@" ignored{'\n'}
+            • Email: "@" ignored
           </Text>
         </View>
 
-        {/* Lists */}
         {mode === 'saved' ? (
           loadingSaved ? (
             <View style={styles.center}>
@@ -406,9 +385,7 @@ export default function ContactScreen({ navigation }) {
               data={saved}
               keyExtractor={(item) => String(item.id)}
               contentContainerStyle={saved.length ? null : styles.center}
-              ListEmptyComponent={
-                <Text style={styles.centerText}>No saved contacts yet.</Text>
-              }
+              ListEmptyComponent={<Text style={styles.centerText}>No saved contacts yet.</Text>}
               renderItem={({ item }) => renderRow({ item, savedMode: true })}
             />
           )
@@ -431,137 +408,33 @@ export default function ContactScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  outerContainer: {
-    flex: 1,
-    backgroundColor: '#000000',
-    alignItems: 'center',
-  },
-  container: {
-    flex: 1,
-    width: '100%',
-    maxWidth: MAX_WIDTH,
-    backgroundColor: '#111827',
-  },
-
-  header: {
-    height: 64,
-    paddingHorizontal: 16,
-    backgroundColor: '#020617',
-    borderBottomWidth: 1,
-    borderBottomColor: '#1F2937',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
+  outerContainer: { flex: 1, backgroundColor: '#000000', alignItems: 'center' },
+  container: { flex: 1, width: '100%', maxWidth: MAX_WIDTH, backgroundColor: '#111827' },
+  header: { height: 64, paddingHorizontal: 16, backgroundColor: '#020617', borderBottomWidth: 1, borderBottomColor: '#1F2937', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   headerBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   headerTitle: { color: '#FFFFFF', fontSize: 18, fontWeight: '700' },
-
-  searchCard: {
-    margin: 16,
-    padding: 16,
-    backgroundColor: '#020617',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#1F2937',
-  },
-  searchHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 10,
-  },
+  searchCard: { margin: 16, padding: 16, backgroundColor: '#020617', borderRadius: 12, borderWidth: 1, borderColor: '#1F2937' },
+  searchHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
   label: { color: '#9CA3AF', fontSize: 12, fontWeight: '700' },
   hintText: { color: '#6B7280', fontSize: 11 },
-  searchingPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
+  searchingPill: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   searchingText: { color: '#9CA3AF', fontSize: 11 },
-
-  searchRow: {
-    position: 'relative',
-    width: '100%',
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  searchIcon: {
-    position: 'absolute',
-    left: 14,
-    zIndex: 2,
-  },
-  input: {
-    flex: 1,
-    minWidth: 0,
-    width: '100%',
-    height: 44,
-    borderRadius: 12,
-    paddingLeft: 38, // room for search icon
-    paddingRight: 38, // room for clear button
-    backgroundColor: '#0B1220',
-    borderWidth: 1,
-    borderColor: '#1F2937',
-    color: '#FFFFFF',
-  },
-  clearBtn: {
-    position: 'absolute',
-    right: 12,
-    height: 44,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-
+  searchRow: { position: 'relative', width: '100%', flexDirection: 'row', alignItems: 'center' },
+  searchIcon: { position: 'absolute', left: 14, zIndex: 2 },
+  input: { flex: 1, minWidth: 0, width: '100%', height: 44, borderRadius: 12, paddingLeft: 38, paddingRight: 38, backgroundColor: '#0B1220', borderWidth: 1, borderColor: '#1F2937', color: '#FFFFFF' },
+  clearBtn: { position: 'absolute', right: 12, height: 44, justifyContent: 'center', alignItems: 'center' },
   modeRow: { flexDirection: 'row', gap: 8, marginTop: 12 },
-  modeChip: {
-    flex: 1,
-    paddingVertical: 10,
-    borderRadius: 999,
-    backgroundColor: '#111827',
-    borderWidth: 1,
-    borderColor: '#1F2937',
-    alignItems: 'center',
-  },
+  modeChip: { flex: 1, paddingVertical: 10, borderRadius: 999, backgroundColor: '#111827', borderWidth: 1, borderColor: '#1F2937', alignItems: 'center' },
   modeChipActive: { backgroundColor: '#10B981', borderColor: '#10B981' },
   modeChipText: { color: '#9CA3AF', fontWeight: '800' },
   modeChipTextActive: { color: '#FFFFFF' },
-
   help: { color: '#6B7280', fontSize: 11, marginTop: 10, lineHeight: 16 },
-
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginHorizontal: 16,
-    marginBottom: 12,
-    padding: 14,
-    borderRadius: 12,
-    backgroundColor: '#020617',
-    borderWidth: 1,
-    borderColor: '#1F2937',
-    gap: 12,
-  },
+  row: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 16, marginBottom: 12, padding: 14, borderRadius: 12, backgroundColor: '#020617', borderWidth: 1, borderColor: '#1F2937', gap: 12 },
   rowTitle: { color: '#FFFFFF', fontSize: 16, fontWeight: '800' },
   rowSub: { color: '#9CA3AF', marginTop: 2 },
   rowMeta: { color: '#6B7280', marginTop: 6, fontSize: 12 },
-
-  rowBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: '#2563EB',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  rowBtnDanger: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: '#111827',
-    borderWidth: 1,
-    borderColor: '#7F1D1D',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
+  rowBtn: { width: 40, height: 40, borderRadius: 12, backgroundColor: '#2563EB', alignItems: 'center', justifyContent: 'center' },
+  rowBtnDanger: { width: 40, height: 40, borderRadius: 12, backgroundColor: '#111827', borderWidth: 1, borderColor: '#7F1D1D', alignItems: 'center', justifyContent: 'center' },
   center: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
   centerText: { color: '#9CA3AF', marginTop: 10, textAlign: 'center' },
 });

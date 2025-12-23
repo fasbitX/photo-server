@@ -1,5 +1,5 @@
 // TextScreen.js
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -9,53 +9,45 @@ import {
   FlatList,
   KeyboardAvoidingView,
   Platform,
-  Image,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from './auth';
 
-const MAX_WIDTH = 288; // match DashboardScreen container width
+const MAX_WIDTH = 300; // sets the maximum width of the screen
 
-function initialsFromUser(u) {
-  const a = String(u?.first_name || '').trim();
-  const b = String(u?.last_name || '').trim();
-  const i = `${a[0] || ''}${b[0] || ''}`.toUpperCase();
-  return i || '@';
-}
-
-function resolveUploadUrl(serverUrl, avatarPath) {
-  if (!serverUrl || !avatarPath) return null;
-  const base = String(serverUrl).replace(/\/+$/, '');
-  const clean = String(avatarPath).replace(/^\/+/, '');
-  return `${base}/uploads/${clean}`;
-}
-
-export default function TextScreen({ route }) {
+export default function TextScreen({ route, navigation }) {
   const { contact } = route.params || {};
-  const { user, serverUrl } = useAuth();
+  const { user, authToken, serverUrl } = useAuth();
   const insets = useSafeAreaInsets();
 
   const [messages, setMessages] = useState([]);
+  const [conversationId, setConversationId] = useState(null);
   const [text, setText] = useState('');
   const [loading, setLoading] = useState(false);
 
   const timerRef = useRef(null);
 
-  const contactName = String(contact?.user_name || '').trim() || '@unknown';
+  const contactName =
+    `${contact?.first_name || ''} ${contact?.last_name || ''}`.trim() ||
+    contact?.email ||
+    'Chat';
 
-  const avatarUrl = useMemo(
-    () => resolveUploadUrl(serverUrl, contact?.avatar_path),
-    [serverUrl, contact?.avatar_path]
-  );
+  // Approx header height (excluding safe-area top). Used only for iOS keyboard offset.
+  const HEADER_BAR_HEIGHT = 64;
+  const keyboardOffset = Platform.OS === 'ios' ? insets.top + HEADER_BAR_HEIGHT : 0;
 
   const fetchThread = async () => {
-    if (!user?.id || !contact?.id || !serverUrl) return;
+    if (!user?.id || !contact?.id || !serverUrl || !authToken) return;
     setLoading(true);
     try {
       const url = `${serverUrl.replace(/\/+$/, '')}/api/mobile/messages/thread`;
       const res = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`,
+        },
         body: JSON.stringify({
           requesterId: user.id,
           contactUserId: contact.id,
@@ -63,7 +55,10 @@ export default function TextScreen({ route }) {
         }),
       });
       const data = await res.json();
-      if (res.ok) setMessages(data.messages || []);
+      if (res.ok) {
+        setConversationId(data.conversationId);
+        setMessages(data.messages || []);
+      }
     } finally {
       setLoading(false);
     }
@@ -79,12 +74,12 @@ export default function TextScreen({ route }) {
       if (timerRef.current) clearInterval(timerRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id, contact?.id, serverUrl]);
+  }, [user?.id, contact?.id, serverUrl, authToken]);
 
   const send = async () => {
     const body = text.trim();
     if (!body) return;
-    if (!user?.id || !contact?.id || !serverUrl) return;
+    if (!user?.id || !contact?.id || !serverUrl || !authToken) return;
 
     setText('');
 
@@ -103,7 +98,10 @@ export default function TextScreen({ route }) {
       const url = `${serverUrl.replace(/\/+$/, '')}/api/mobile/messages/send`;
       const res = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`,
+        },
         body: JSON.stringify({
           senderId: user.id,
           recipientId: contact.id,
@@ -112,7 +110,9 @@ export default function TextScreen({ route }) {
       });
       const data = await res.json();
 
-      if (res.ok && data.message) await fetchThread(); // reconcile optimistic
+      if (res.ok && data.message) {
+        await fetchThread(); // reconcile optimistic
+      }
     } catch (e) {
       await fetchThread(); // reconcile on error too
     }
@@ -121,26 +121,30 @@ export default function TextScreen({ route }) {
   return (
     <KeyboardAvoidingView
       style={styles.kav}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top + 44 : 0}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={keyboardOffset}
     >
       <View style={styles.outerContainer}>
         <View style={styles.container}>
-          {/* Header Card (no back button; use Android system back) */}
-          <View style={[styles.headerWrap, { paddingTop: insets.top + 10 }]}>
-            <View style={styles.headerCard}>
-              <View style={styles.headerAvatarWrap}>
-                {avatarUrl ? (
-                  <Image source={{ uri: avatarUrl }} style={styles.headerAvatarImg} />
-                ) : (
-                  <Text style={styles.headerAvatarInitials}>{initialsFromUser(contact)}</Text>
-                )}
-              </View>
+          {/* Dashboard-style header (safe-area aware) */}
+          <View style={[styles.header, { paddingTop: insets.top + 14 }]}>
+            <TouchableOpacity
+              onPress={() => navigation.goBack()}
+              style={styles.backButton}
+              activeOpacity={0.6}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              accessibilityRole="button"
+              accessibilityLabel="Back"
+            >
+              <Ionicons name="chevron-back" size={28} color="#9CA3AF" />
+            </TouchableOpacity>
 
-              <Text style={styles.headerCardTitle} numberOfLines={1}>
-                {contactName}
-              </Text>
-            </View>
+            <Text style={styles.headerTitle} numberOfLines={1}>
+              {contactName}
+            </Text>
+
+            {/* spacer to keep title centered */}
+            <View style={styles.headerRightSpacer} />
           </View>
 
           {/* Content area */}
@@ -167,18 +171,21 @@ export default function TextScreen({ route }) {
               }}
             />
 
-            <View style={styles.composer}>
-              <TextInput
-                value={text}
-                onChangeText={setText}
-                placeholder="Type a message..."
-                placeholderTextColor="#9CA3AF"
-                style={styles.input}
-                multiline
-              />
-              <TouchableOpacity style={styles.sendBtn} onPress={send} activeOpacity={0.85}>
-                <Text style={styles.sendText}>Send</Text>
-              </TouchableOpacity>
+            {/* Safe-area padding keeps composer above Android nav bar; keyboard avoidance handled by KAV */}
+            <View style={[styles.composerWrap, { paddingBottom: Math.max(insets.bottom, 10) }]}>
+              <View style={styles.composer}>
+                <TextInput
+                  value={text}
+                  onChangeText={setText}
+                  placeholder="Type a message..."
+                  placeholderTextColor="#9CA3AF"
+                  style={styles.input}
+                  multiline
+                />
+                <TouchableOpacity style={styles.sendBtn} onPress={send} activeOpacity={0.85}>
+                  <Text style={styles.sendText}>Send</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
         </View>
@@ -188,7 +195,6 @@ export default function TextScreen({ route }) {
 }
 
 const styles = StyleSheet.create({
-  // KeyboardAvoiding wrapper
   kav: { flex: 1 },
 
   // Dashboard-style outer shell
@@ -204,48 +210,31 @@ const styles = StyleSheet.create({
     backgroundColor: '#111827',
   },
 
-  // Header Card (1cm-ish tall)
-  headerWrap: {
-    paddingHorizontal: 16,
-    paddingBottom: 10,
-  },
-  headerCard: {
-    height: 40,
-    borderRadius: 16,
-    backgroundColor: '#020617',
-    borderWidth: 1,
-    borderColor: '#1F2937',
-    paddingHorizontal: 12,
+  // Dashboard-style header bar
+  header: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    gap: 10,
+    paddingHorizontal: 20,
+    paddingBottom: 14,
+    backgroundColor: '#020617',
+    borderBottomWidth: 1,
+    borderBottomColor: '#1F2937',
   },
-  headerAvatarWrap: {
-    width: 26,
-    height: 26,
-    borderRadius: 999,
-    backgroundColor: '#0B1220',
-    borderWidth: 1,
-    borderColor: '#1F2937',
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
+  backButton: {
+    padding: 12,
+    marginLeft: -12,
   },
-  headerAvatarImg: {
-    width: '100%',
-    height: '100%',
-  },
-  headerAvatarInitials: {
-    color: '#93C5FD',
-    fontWeight: '900',
-    fontSize: 12,
-  },
-  headerCardTitle: {
+  headerTitle: {
     flex: 1,
-    minWidth: 0,
+    textAlign: 'center',
+    fontSize: 18,
+    fontWeight: 'bold',
     color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '800',
+    paddingHorizontal: 6,
+  },
+  headerRightSpacer: {
+    width: 28 + 24,
   },
 
   // Content matches Dashboard padding
@@ -279,6 +268,9 @@ const styles = StyleSheet.create({
   },
   bubbleText: { color: '#FFF', fontSize: 14 },
 
+  composerWrap: {
+    // paddingBottom is applied dynamically via insets
+  },
   composer: {
     flexDirection: 'row',
     alignItems: 'flex-end',

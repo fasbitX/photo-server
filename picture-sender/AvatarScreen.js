@@ -100,10 +100,10 @@ export default function AvatarScreen({ navigation }) {
     }
 
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaType.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.9,
+        mediaTypes: ['images'], // <-- works on web/native, no enum needed
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.9,
     });
 
     if (result.canceled) return;

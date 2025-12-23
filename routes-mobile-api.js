@@ -410,17 +410,25 @@ function registerMobileApiRoutes(app) {
         hydrated.push({
             conversation_id: t.conversation_id,
             contact: other
-            ? { id: other.id, first_name: other.first_name, last_name: other.last_name, email: other.email }
-            : { id: otherId },
+                ? {
+                    id: other.id,
+                    user_name: other.user_name,          
+                    first_name: other.first_name,
+                    last_name: other.last_name,
+                    email: other.email,
+                    avatar_path: other.avatar_path || null, 
+                }
+                : { id: otherId },
             last: {
-            id: t.last_message_id,
-            sender_id: t.last_sender_id,
-            type: t.last_message_type,
-            content: t.last_content,
-            attachment_path: t.last_attachment_path,
-            sent_date: t.last_sent_date,
+                id: t.last_message_id,
+                sender_id: t.last_sender_id,
+                type: t.last_message_type,
+                content: t.last_content,
+                attachment_path: t.last_attachment_path,
+                sent_date: t.last_sent_date,
             },
         });
+
         }
 
         res.json({ threads: hydrated });

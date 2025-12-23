@@ -5,6 +5,10 @@ const {
   verifyPassword,
   createUser,
   findUserById,
+  findUserByToken,
+  setUserAuthToken,
+  clearUserAuthToken,
+  generateAuthToken,
   updateUser,  
   createLoginSession,
   searchUsersByIdentifier,
@@ -20,6 +24,36 @@ const {
 const {
   sendVerificationEmail,
 } = require('./email-utils');
+
+/* ──────────────────────────────────────────────
+ *  AUTHENTICATION MIDDLEWARE
+ * ────────────────────────────────────────────── */
+
+async function requireMobileAuth(req, res, next) {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'No authentication token provided' });
+    }
+
+    const token = authHeader.substring(7);
+    const user = await findUserByToken(token);
+
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid or expired token' });
+    }
+
+    if (user.status !== 'active') {
+      return res.status(403).json({ error: 'Account is not active' });
+    }
+
+    req.user = user;
+    next();
+  } catch (err) {
+    console.error('Mobile auth middleware error:', err);
+    res.status(500).json({ error: 'Authentication failed' });
+  }
+}
 
 function registerMobileApiRoutes(app) {
   
@@ -51,6 +85,10 @@ function registerMobileApiRoutes(app) {
         return res.status(403).json({ error: 'Please verify your email before logging in' });
       }
       
+      // Generate and store auth token
+      const authToken = generateAuthToken();
+      await setUserAuthToken(user.id, authToken);
+      
       // Track login session
       const deviceInfo = req.headers['user-agent'] || 'Unknown Device';
       const ipAddress = req.ip || req.connection.remoteAddress;
@@ -62,36 +100,51 @@ function registerMobileApiRoutes(app) {
         // Continue with login even if session tracking fails
       }
       
-      // Return user data (without password hash)
+      // Return user data with auth token
       const userData = {
-  id: user.id,
-  account_number: user.account_number,
-  user_name: user.user_name,
-  first_name: user.first_name,
-  last_name: user.last_name,
-  email: user.email,
-  phone: user.phone,
-  status: user.status,
-  account_balance: parseFloat(user.account_balance),
-  email_verified: user.email_verified,
-  avatar_path: user.avatar_path || null,
-  created_date: user.created_date,
-  timezone: user.timezone,
-  street_address: user.street_address,
-  city: user.city,
-  state: user.state,
-  zip: user.zip,
-  gender: user.gender,
-  date_of_birth: user.date_of_birth, // pg returns Date -> JSON becomes ISO string
-};
-
-
+        id: user.id,
+        account_number: user.account_number,
+        user_name: user.user_name,
+        first_name: user.first_name,
+        last_name: user.last_name,
+        email: user.email,
+        phone: user.phone,
+        status: user.status,
+        account_balance: parseFloat(user.account_balance),
+        email_verified: user.email_verified,
+        avatar_path: user.avatar_path || null,
+        created_date: user.created_date,
+        timezone: user.timezone,
+        street_address: user.street_address,
+        city: user.city,
+        state: user.state,
+        zip: user.zip,
+        gender: user.gender,
+        date_of_birth: user.date_of_birth,
+      };
       
-      res.json({ user: userData });
+      res.json({ 
+        user: userData,
+        authToken: authToken 
+      });
       
     } catch (err) {
       console.error('Mobile login error:', err);
       res.status(500).json({ error: 'Login failed' });
+    }
+  });
+  
+  /* ──────────────────────────────────────────────
+   *  MOBILE LOGOUT
+   * ────────────────────────────────────────────── */
+  
+  app.post('/api/mobile/logout', requireMobileAuth, async (req, res) => {
+    try {
+      await clearUserAuthToken(req.user.id);
+      res.json({ ok: true, message: 'Logged out successfully' });
+    } catch (err) {
+      console.error('Mobile logout error:', err);
+      res.status(500).json({ error: 'Logout failed' });
     }
   });
   
@@ -145,7 +198,7 @@ function registerMobileApiRoutes(app) {
       
       console.log('Attempting to create user with user_name:', user_name);
       
-      // Create user - this will throw error if phone/email/username already exists
+      // Create user
       let result;
       try {
         result = await createUser({
@@ -167,7 +220,6 @@ function registerMobileApiRoutes(app) {
       } catch (createErr) {
         console.error('createUser error:', createErr.message);
         
-        // Handle specific database errors
         let errorMsg = 'Signup failed';
         if (createErr.message.includes('Phone number already registered')) {
           errorMsg = 'This phone number is already registered. Please use a different phone number or log in.';
@@ -178,19 +230,17 @@ function registerMobileApiRoutes(app) {
         } else if (createErr.message.includes('already registered')) {
           errorMsg = createErr.message;
         } else {
-          // Return the actual error for debugging
           errorMsg = `Signup failed: ${createErr.message}`;
         }
         return res.status(400).json({ error: errorMsg });
       }
       
-      // User created successfully - now send verification email
+      // Send verification email
       try {
         await sendVerificationEmail(email, result.verificationToken, req);
         console.log('Verification email sent to:', email);
       } catch (emailError) {
         console.error('Failed to send verification email:', emailError);
-        // Continue anyway - user is created, just email failed
       }
       
       res.json({ 
@@ -205,24 +255,15 @@ function registerMobileApiRoutes(app) {
   });
   
   /* ──────────────────────────────────────────────
-   *  GET USER DATA (FOR REFRESH)
+   *  GET USER DATA (FOR REFRESH) - NOW AUTHENTICATED
    * ────────────────────────────────────────────── */
   
-  app.post('/api/mobile/user', express.json(), async (req, res) => {
+  app.post('/api/mobile/user', requireMobileAuth, async (req, res) => {
     try {
-      const { email } = req.body;
+      // User is already loaded by middleware
+      const user = req.user;
       
-      if (!email) {
-        return res.status(400).json({ error: 'Email required' });
-      }
-      
-      const user = await findUserByEmail(email);
-      
-      if (!user) {
-        return res.status(404).json({ error: 'User not found' });
-      }
-      
-     const userData = {
+      const userData = {
         id: user.id,
         account_number: user.account_number,
         user_name: user.user_name,
@@ -241,10 +282,8 @@ function registerMobileApiRoutes(app) {
         state: user.state,
         zip: user.zip,
         gender: user.gender,
-        date_of_birth: user.date_of_birth, // pg returns Date -> JSON becomes ISO string
-        };
-
-
+        date_of_birth: user.date_of_birth,
+      };
       
       res.json({ user: userData });
       
@@ -254,14 +293,13 @@ function registerMobileApiRoutes(app) {
     }
   });
 
-    // ──────────────────────────────────────────────
-    // USER INFORMATION (MOBILE)
-    // ──────────────────────────────────────────────
+  /* ──────────────────────────────────────────────
+   *  USER INFORMATION (MOBILE) - AUTHENTICATED
+   * ────────────────────────────────────────────── */
    
-    app.post('/api/mobile/user/update', express.json(), async (req, res) => {
+  app.post('/api/mobile/user/update', requireMobileAuth, async (req, res) => {
     try {
-        const {
-        userId,
+      const {
         first_name,
         last_name,
         user_name,
@@ -273,262 +311,239 @@ function registerMobileApiRoutes(app) {
         gender,
         date_of_birth,
         timezone,
-        } = req.body;
+      } = req.body;
 
-        if (!userId) {
-        return res.status(400).json({ error: 'User ID required' });
-        }
+      // Build update object with only provided fields
+      const updates = {};
+      if (first_name !== undefined) updates.first_name = first_name;
+      if (last_name !== undefined) updates.last_name = last_name;
+      if (user_name !== undefined) updates.user_name = user_name;
+      if (street_address !== undefined) updates.street_address = street_address;
+      if (city !== undefined) updates.city = city;
+      if (state !== undefined) updates.state = state;
+      if (zip !== undefined) updates.zip = zip;
+      if (phone !== undefined) updates.phone = phone;
+      if (gender !== undefined) updates.gender = gender;
+      if (date_of_birth !== undefined) updates.date_of_birth = date_of_birth;
+      if (timezone !== undefined) updates.timezone = timezone;
 
-        // Build update object with only provided fields
-        const updates = {};
-        if (first_name !== undefined) updates.first_name = first_name;
-        if (last_name !== undefined) updates.last_name = last_name;
-        if (user_name !== undefined) updates.user_name = user_name;
-        if (street_address !== undefined) updates.street_address = street_address;
-        if (city !== undefined) updates.city = city;
-        if (state !== undefined) updates.state = state;
-        if (zip !== undefined) updates.zip = zip;
-        if (phone !== undefined) updates.phone = phone;
-        if (gender !== undefined) updates.gender = gender;
-        if (date_of_birth !== undefined) updates.date_of_birth = date_of_birth;
-        if (timezone !== undefined) updates.timezone = timezone;
+      const success = await updateUser(req.user.id, updates);
 
-        const success = await updateUser(userId, updates);
+      if (!success) {
+        return res.status(404).json({ error: 'Update failed' });
+      }
 
-        if (!success) {
-        return res.status(404).json({ error: 'User not found or update failed' });
-        }
-
-        res.json({ ok: true, message: 'User updated successfully' });
+      res.json({ ok: true, message: 'User updated successfully' });
 
     } catch (err) {
-        console.error('User update error:', err);
-        
-        // Handle unique constraint violations
-        if (err.code === '23505') {
+      console.error('User update error:', err);
+      
+      if (err.code === '23505') {
         if (err.constraint === 'users_phone_key') {
-            return res.status(400).json({ error: 'Phone number already in use' });
+          return res.status(400).json({ error: 'Phone number already in use' });
         }
         if (err.constraint === 'users_user_name_key') {
-            return res.status(400).json({ error: 'Username already taken' });
+          return res.status(400).json({ error: 'Username already taken' });
         }
-        }
-        
-        res.status(500).json({ error: 'Failed to update user' });
-    }
-    });
-
-    // ──────────────────────────────────────────────
-    // CONTACTS (MOBILE)
-    // ──────────────────────────────────────────────
-
-    // Unified search across phone/email/username (single request)
-    app.post('/api/mobile/contacts/search-any', express.json(), async (req, res) => {
-      try {
-        const { requesterId, q, value } = req.body || {};
-        const term = (q != null ? q : value);
-
-        if (!requesterId) return res.status(400).json({ error: 'Missing requesterId' });
-        if (!term) return res.status(400).json({ error: 'Missing search term' });
-
-        const results = await searchUsersAny({
-          value: term,
-          excludeUserId: requesterId,
-          limit: 25,
-        });
-
-        res.json({ results });
-      } catch (err) {
-        console.error('contacts/search-any error:', err);
-        res.status(500).json({ error: 'Search failed' });
       }
-    });
+      
+      res.status(500).json({ error: 'Failed to update user' });
+    }
+  });
 
-    app.post('/api/mobile/contacts/search', express.json(), async (req, res) => {
+  /* ──────────────────────────────────────────────
+   *  CONTACTS (MOBILE) - ALL AUTHENTICATED
+   * ────────────────────────────────────────────── */
+
+  app.post('/api/mobile/contacts/search-any', requireMobileAuth, async (req, res) => {
     try {
-        const { requesterId, type, value } = req.body || {};
-        if (!requesterId) return res.status(400).json({ error: 'Missing requesterId' });
-        if (!type || !value) return res.status(400).json({ error: 'Missing type/value' });
+      const { q, value } = req.body || {};
+      const term = (q != null ? q : value);
 
-        const results = await searchUsersByIdentifier({
+      if (!term) return res.status(400).json({ error: 'Missing search term' });
+
+      const results = await searchUsersAny({
+        value: term,
+        excludeUserId: req.user.id,
+        limit: 25,
+      });
+
+      res.json({ results });
+    } catch (err) {
+      console.error('contacts/search-any error:', err);
+      res.status(500).json({ error: 'Search failed' });
+    }
+  });
+
+  app.post('/api/mobile/contacts/search', requireMobileAuth, async (req, res) => {
+    try {
+      const { type, value } = req.body || {};
+      if (!type || !value) return res.status(400).json({ error: 'Missing type/value' });
+
+      const results = await searchUsersByIdentifier({
         type,
         value,
-        excludeUserId: requesterId,
+        excludeUserId: req.user.id,
         limit: 25,
-        });
+      });
 
-        res.json({ results });
+      res.json({ results });
     } catch (err) {
-        console.error('contacts/search error:', err);
-        res.status(500).json({ error: 'Search failed' });
+      console.error('contacts/search error:', err);
+      res.status(500).json({ error: 'Search failed' });
     }
-    });
+  });
 
-    app.post('/api/mobile/contacts/list', express.json(), async (req, res) => {
+  app.post('/api/mobile/contacts/list', requireMobileAuth, async (req, res) => {
     try {
-        const { requesterId } = req.body || {};
-        if (!requesterId) return res.status(400).json({ error: 'Missing requesterId' });
-
-        const contacts = await listContacts({ userId: requesterId, limit: 200 });
-        res.json({ contacts });
+      const contacts = await listContacts({ userId: req.user.id, limit: 200 });
+      res.json({ contacts });
     } catch (err) {
-        console.error('contacts/list error:', err);
-        res.status(500).json({ error: 'List failed' });
+      console.error('contacts/list error:', err);
+      res.status(500).json({ error: 'List failed' });
     }
-    });
+  });
 
-    app.post('/api/mobile/contacts/add', express.json(), async (req, res) => {
+  app.post('/api/mobile/contacts/add', requireMobileAuth, async (req, res) => {
     try {
-        const { requesterId, contactUserId, nickname } = req.body || {};
-        if (!requesterId) return res.status(400).json({ error: 'Missing requesterId' });
-        if (!contactUserId) return res.status(400).json({ error: 'Missing contactUserId' });
+      const { contactUserId, nickname } = req.body || {};
+      if (!contactUserId) return res.status(400).json({ error: 'Missing contactUserId' });
 
-        const added = await addContact({
-        userId: requesterId,
+      const added = await addContact({
+        userId: req.user.id,
         contactUserId,
         nickname: nickname ? String(nickname).trim() : null,
-        });
+      });
 
-        res.json({ ok: true, added });
+      res.json({ ok: true, added });
     } catch (err) {
-        console.error('contacts/add error:', err);
-        res.status(500).json({ error: 'Add failed' });
+      console.error('contacts/add error:', err);
+      res.status(500).json({ error: 'Add failed' });
     }
-    });
+  });
 
-    app.post('/api/mobile/contacts/remove', express.json(), async (req, res) => {
+  app.post('/api/mobile/contacts/remove', requireMobileAuth, async (req, res) => {
     try {
-        const { requesterId, contactUserId } = req.body || {};
-        if (!requesterId) return res.status(400).json({ error: 'Missing requesterId' });
-        if (!contactUserId) return res.status(400).json({ error: 'Missing contactUserId' });
+      const { contactUserId } = req.body || {};
+      if (!contactUserId) return res.status(400).json({ error: 'Missing contactUserId' });
 
-        await removeContact({ userId: requesterId, contactUserId });
-        res.json({ ok: true });
+      await removeContact({ userId: req.user.id, contactUserId });
+      res.json({ ok: true });
     } catch (err) {
-        console.error('contacts/remove error:', err);
-        res.status(500).json({ error: 'Remove failed' });
+      console.error('contacts/remove error:', err);
+      res.status(500).json({ error: 'Remove failed' });
     }
-    });
+  });
 
-    // ──────────────────────────────────────────────
-    // MESSAGES (MOBILE)
-    // ──────────────────────────────────────────────
+  /* ──────────────────────────────────────────────
+   *  MESSAGES (MOBILE) - ALL AUTHENTICATED
+   * ────────────────────────────────────────────── */
 
-    app.post('/api/mobile/messages/threads', express.json(), async (req, res) => {
+  app.post('/api/mobile/messages/threads', requireMobileAuth, async (req, res) => {
     try {
-        const { requesterId, limit } = req.body || {};
-        if (!requesterId) return res.status(400).json({ error: 'Missing requesterId' });
+      const { limit } = req.body || {};
 
-        const threads = await listThreads({ userId: requesterId, limit: limit || 50 });
+      const threads = await listThreads({ userId: req.user.id, limit: limit || 50 });
 
-        // For each thread, compute "other user"
-        const hydrated = [];
-        for (const t of threads) {
-        const otherId = Number(t.user1_id) === Number(requesterId) ? t.user2_id : t.user1_id;
+      const hydrated = [];
+      for (const t of threads) {
+        const otherId = Number(t.user1_id) === Number(req.user.id) ? t.user2_id : t.user1_id;
         const other = await findUserById(otherId);
         hydrated.push({
-            conversation_id: t.conversation_id,
-            contact: other
-                ? {
-                    id: other.id,
-                    user_name: other.user_name,          
-                    first_name: other.first_name,
-                    last_name: other.last_name,
-                    email: other.email,
-                    avatar_path: other.avatar_path || null, 
-                }
-                : { id: otherId },
-            last: {
-                id: t.last_message_id,
-                sender_id: t.last_sender_id,
-                type: t.last_message_type,
-                content: t.last_content,
-                attachment_path: t.last_attachment_path,
-                sent_date: t.last_sent_date,
-            },
+          conversation_id: t.conversation_id,
+          contact: other
+            ? {
+                id: other.id,
+                user_name: other.user_name,          
+                first_name: other.first_name,
+                last_name: other.last_name,
+                email: other.email,
+                avatar_path: other.avatar_path || null, 
+              }
+            : { id: otherId },
+          last: {
+            id: t.last_message_id,
+            sender_id: t.last_sender_id,
+            type: t.last_message_type,
+            content: t.last_content,
+            attachment_path: t.last_attachment_path,
+            sent_date: t.last_sent_date,
+          },
         });
+      }
 
-        }
-
-        res.json({ threads: hydrated });
+      res.json({ threads: hydrated });
     } catch (err) {
-        console.error('messages/threads error:', err);
-        res.status(500).json({ error: 'Failed to load threads' });
+      console.error('messages/threads error:', err);
+      res.status(500).json({ error: 'Failed to load threads' });
     }
-    });
+  });
 
-    app.post('/api/mobile/messages/thread', express.json(), async (req, res) => {
+  app.post('/api/mobile/messages/thread', requireMobileAuth, async (req, res) => {
     try {
-        const { requesterId, contactUserId, limit, beforeId } = req.body || {};
-        if (!requesterId) return res.status(400).json({ error: 'Missing requesterId' });
-        if (!contactUserId) return res.status(400).json({ error: 'Missing contactUserId' });
+      const { contactUserId, limit, beforeId } = req.body || {};
+      if (!contactUserId) return res.status(400).json({ error: 'Missing contactUserId' });
 
-        const out = await getThreadMessages({
-        requesterId,
+      const out = await getThreadMessages({
+        requesterId: req.user.id,
         contactUserId,
         limit: limit || 50,
         beforeId: beforeId || null,
-        });
+      });
 
-        res.json(out);
+      res.json(out);
     } catch (err) {
-        console.error('messages/thread error:', err);
-        res.status(500).json({ error: 'Failed to load thread' });
+      console.error('messages/thread error:', err);
+      res.status(500).json({ error: 'Failed to load thread' });
     }
-    });
+  });
 
-    app.post('/api/mobile/messages/send', express.json(), async (req, res) => {
+  app.post('/api/mobile/messages/send', requireMobileAuth, async (req, res) => {
     try {
-        const {
-        senderId,
+      const {
         recipientId,
         content,
         attachmentPath,
         attachmentMime,
         attachmentSize,
         attachmentOriginalName,
-        } = req.body || {};
+      } = req.body || {};
 
-        if (!senderId) return res.status(400).json({ error: 'Missing senderId' });
-        if (!recipientId) return res.status(400).json({ error: 'Missing recipientId' });
+      if (!recipientId) return res.status(400).json({ error: 'Missing recipientId' });
 
-        if (!content && !attachmentPath) {
+      if (!content && !attachmentPath) {
         return res.status(400).json({ error: 'Message must have content or attachment' });
-        }
+      }
 
-        const msg = await sendMessage({
-        senderId,
+      const msg = await sendMessage({
+        senderId: req.user.id,
         recipientId,
         content: content != null ? String(content) : null,
         attachmentPath: attachmentPath || null,
         attachmentMime: attachmentMime || null,
         attachmentSize: attachmentSize || null,
         attachmentOriginalName: attachmentOriginalName || null,
-        });
+      });
 
-        res.json({ message: msg });
+      res.json({ message: msg });
     } catch (err) {
-        console.error('messages/send error:', err);
-        res.status(500).json({ error: 'Failed to send message' });
+      console.error('messages/send error:', err);
+      res.status(500).json({ error: 'Failed to send message' });
     }
-    });
+  });
 
-    app.post('/api/mobile/messages/mark-read', express.json(), async (req, res) => {
+  app.post('/api/mobile/messages/mark-read', requireMobileAuth, async (req, res) => {
     try {
-        const { requesterId, conversationId } = req.body || {};
-        if (!requesterId) return res.status(400).json({ error: 'Missing requesterId' });
-        if (!conversationId) return res.status(400).json({ error: 'Missing conversationId' });
+      const { conversationId } = req.body || {};
+      if (!conversationId) return res.status(400).json({ error: 'Missing conversationId' });
 
-        const ok = await markThreadRead({ requesterId, conversationId });
-        res.json(ok);
+      const ok = await markThreadRead({ requesterId: req.user.id, conversationId });
+      res.json(ok);
     } catch (err) {
-        console.error('messages/mark-read error:', err);
-        res.status(500).json({ error: 'Failed to mark read' });
+      console.error('messages/mark-read error:', err);
+      res.status(500).json({ error: 'Failed to mark read' });
     }
-    });
-
-
-
+  });
 }
 
 module.exports = { registerMobileApiRoutes };

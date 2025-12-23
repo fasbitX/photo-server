@@ -73,10 +73,12 @@ function initDatabase() {
       await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS gender VARCHAR(20)`);
       await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS date_of_birth DATE`);
       await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_path TEXT`);
+      await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS auth_token TEXT`);
 
       // ✅ Unique username index (name chosen so err.constraint matches existing code)
       await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS users_user_name_key ON users(user_name)`);
       await client.query(`CREATE INDEX IF NOT EXISTS idx_users_user_name ON users(user_name)`);
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_users_auth_token ON users(auth_token)`);
 
       // Create transactions table
       await client.query(`
@@ -142,6 +144,23 @@ function initDatabase() {
       await client.query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS attachment_size BIGINT`);
       await client.query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS attachment_original_name TEXT`);
 
+      // ✅ NEW: Create media table for authenticated file access
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS media (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          storage_path TEXT NOT NULL,
+          owner_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          kind VARCHAR(50) NOT NULL,
+          conversation_id INTEGER REFERENCES conversations(id) ON DELETE CASCADE,
+          visible_to_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          mime_type VARCHAR(100),
+          file_size BIGINT,
+          original_name TEXT,
+          created_at BIGINT NOT NULL,
+          metadata JSONB
+        )
+      `);
+
       // ✅ Helpful indexes
       await client.query(`CREATE INDEX IF NOT EXISTS idx_conversations_user1 ON conversations(user1_id)`);
       await client.query(`CREATE INDEX IF NOT EXISTS idx_conversations_user2 ON conversations(user2_id)`);
@@ -174,6 +193,12 @@ function initDatabase() {
           session_token VARCHAR(255) UNIQUE
         )
       `);
+
+      // ✅ NEW: Indexes for media table
+      await client.query('CREATE INDEX IF NOT EXISTS idx_media_owner ON media(owner_user_id)');
+      await client.query('CREATE INDEX IF NOT EXISTS idx_media_kind ON media(kind)');
+      await client.query('CREATE INDEX IF NOT EXISTS idx_media_conversation ON media(conversation_id)');
+      await client.query('CREATE INDEX IF NOT EXISTS idx_media_visible_to ON media(visible_to_user_id)');
 
       // Create indexes for performance
       await client.query('CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)');
@@ -218,6 +243,14 @@ function verifyPassword(password, hash) {
       resolve(key === derivedKey.toString('hex'));
     });
   });
+}
+
+/* ──────────────────────────────────────────────
+ *  TOKEN GENERATION
+ * ────────────────────────────────────────────── */
+
+function generateAuthToken() {
+  return crypto.randomBytes(32).toString('hex');
 }
 
 /* ──────────────────────────────────────────────
@@ -348,6 +381,31 @@ async function findUserById(userId) {
   return result.rows[0] || null;
 }
 
+async function findUserByToken(token) {
+  if (!token) return null;
+  const result = await pool.query(
+    'SELECT * FROM users WHERE auth_token = $1',
+    [token]
+  );
+  return result.rows[0] || null;
+}
+
+async function setUserAuthToken(userId, token) {
+  const now = Date.now();
+  await pool.query(
+    'UPDATE users SET auth_token = $1, last_modified = $2 WHERE id = $3',
+    [token, now, userId]
+  );
+}
+
+async function clearUserAuthToken(userId) {
+  const now = Date.now();
+  await pool.query(
+    'UPDATE users SET auth_token = NULL, last_modified = $1 WHERE id = $2',
+    [now, userId]
+  );
+}
+
 async function verifyUserEmail(token) {
   const now = Date.now();
   const result = await pool.query(
@@ -364,7 +422,6 @@ async function updateUser(userId, updates) {
   const allowedFields = [
     'first_name', 'last_name', 'street_address', 'city',
     'state', 'zip', 'phone', 'timezone', 'status',
-    // optionally allow username and avatar path updates via server-side logic
     'user_name', 'avatar_path', 'gender', 'date_of_birth'
   ];
   
@@ -459,7 +516,6 @@ async function addTransaction(userId, amount, description) {
   try {
     await client.query('BEGIN');
 
-    // Get current balance
     const userResult = await client.query(
       'SELECT account_balance FROM users WHERE id = $1',
       [userId]
@@ -472,7 +528,6 @@ async function addTransaction(userId, amount, description) {
     const newBalance = parseFloat(userResult.rows[0].account_balance) + parseFloat(amount);
     const now = Date.now();
 
-    // Insert transaction
     const transactionResult = await client.query(
       `INSERT INTO transactions (user_id, amount, description, running_balance, transaction_date) 
        VALUES ($1, $2, $3, $4, $5) 
@@ -480,7 +535,6 @@ async function addTransaction(userId, amount, description) {
       [userId, amount, description, newBalance, now]
     );
 
-    // Update user balance
     await client.query(
       'UPDATE users SET account_balance = $1, last_modified = $2 WHERE id = $3',
       [newBalance, now, userId]
@@ -563,31 +617,26 @@ async function searchUsersByIdentifier({ type, value, excludeUserId, limit = 20 
   }
 
   if (type === 'phone') {
-  const digits = q.replace(/\D/g, '');
-  if (!digits) return [];
+    const digits = q.replace(/\D/g, '');
+    if (!digits) return [];
 
-  // TEMP DEBUG (remove later)
-  console.log('[db.searchUsersByIdentifier]', { type, q, digits, exId });
+    const { rows } = await pool.query(
+      `
+      SELECT id, user_name, first_name, last_name, email, phone
+      FROM users
+      WHERE id <> $1
+        AND (
+          regexp_replace(COALESCE(phone,''), '[^0-9]', '', 'g') LIKE $2
+          OR COALESCE(phone,'') ILIKE $3
+        )
+      ORDER BY id DESC
+      LIMIT $4
+      `,
+      [exId, `%${digits}%`, `%${q}%`, limit]
+    );
 
-  const { rows } = await pool.query(
-    `
-    SELECT id, user_name, first_name, last_name, email, phone
-    FROM users
-    WHERE id <> $1
-      AND (
-        -- normalized digit search (punctuation-insensitive)
-        regexp_replace(COALESCE(phone,''), '[^0-9]', '', 'g') LIKE $2
-        -- raw search fallback (lets "6666" hit even if regex normalization fails)
-        OR COALESCE(phone,'') ILIKE $3
-      )
-    ORDER BY id DESC
-    LIMIT $4
-    `,
-    [exId, `%${digits}%`, `%${q}%`, limit]
-  );
-
-  return rows;
-}
+    return rows;
+  }
 
   if (type === 'email') {
     const qq = q.toLowerCase().replace(/@/g, '');
@@ -634,7 +683,6 @@ async function searchUsersAny({ value, excludeUserId, limit = 25 }) {
 
   const qDigits = raw.replace(/\D/g, '');
 
-  // Keep this consistent with the client gating.
   const MIN_CHARS = 3;
   const textLike = qNoAt.length >= MIN_CHARS ? `%${qNoAt}%` : null;
   const digitsLike = qDigits.length >= MIN_CHARS ? `%${qDigits}%` : null;
@@ -665,7 +713,7 @@ async function addContact({ userId, contactUserId, nickname = null }) {
   const cid = Number(contactUserId);
   if (!uid || !cid) throw new Error('Missing userId/contactUserId');
 
-  const addedDateMs = Date.now(); // <-- MUST EXIST with this exact name
+  const addedDateMs = Date.now();
 
   const { rows } = await pool.query(
     `
@@ -675,7 +723,7 @@ async function addContact({ userId, contactUserId, nickname = null }) {
     DO UPDATE SET nickname = COALESCE(EXCLUDED.nickname, contacts.nickname)
     RETURNING user_id, contact_user_id, nickname, added_date
     `,
-    [uid, cid, nickname, addedDateMs] // <-- MUST MATCH name above
+    [uid, cid, nickname, addedDateMs]
   );
 
   return rows[0];
@@ -767,14 +815,12 @@ async function getOrCreateConversation(userA, userB) {
   const [u1, u2] = normalizePair(userA, userB);
   const now = Date.now();
 
-  // Try existing
   const existing = await pool.query(
     `SELECT id FROM conversations WHERE user1_id=$1 AND user2_id=$2`,
     [u1, u2]
   );
   if (existing.rows[0]) return existing.rows[0].id;
 
-  // Create
   const created = await pool.query(
     `INSERT INTO conversations (user1_id, user2_id, created_date)
      VALUES ($1, $2, $3)
@@ -832,7 +878,6 @@ async function sendMessage({
 
   const msg = inserted.rows[0];
 
-  // Update conversation pointers
   await pool.query(
     `UPDATE conversations
      SET last_message_date=$1, last_message_id=$2
@@ -846,7 +891,6 @@ async function sendMessage({
 async function listThreads({ userId, limit = 50 }) {
   const uid = Number(userId);
 
-  // Return conversations + last message (fast enough for MVP)
   const rows = await pool.query(
     `
     SELECT
@@ -914,6 +958,81 @@ async function markThreadRead({ requesterId, conversationId }) {
   return { ok: true };
 }
 
+/* ──────────────────────────────────────────────
+ *  MEDIA OPERATIONS (NEW)
+ * ────────────────────────────────────────────── */
+
+async function createMedia({
+  storagePath,
+  ownerUserId,
+  kind,
+  conversationId = null,
+  visibleToUserId = null,
+  mimeType = null,
+  fileSize = null,
+  originalName = null,
+  metadata = null
+}) {
+  const now = Date.now();
+  const result = await pool.query(
+    `INSERT INTO media (
+      storage_path, owner_user_id, kind, conversation_id, 
+      visible_to_user_id, mime_type, file_size, original_name, 
+      created_at, metadata
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+    RETURNING id`,
+    [
+      storagePath,
+      ownerUserId,
+      kind,
+      conversationId,
+      visibleToUserId,
+      mimeType,
+      fileSize,
+      originalName,
+      now,
+      metadata ? JSON.stringify(metadata) : null
+    ]
+  );
+  return result.rows[0].id;
+}
+
+async function getMediaById(mediaId) {
+  const result = await pool.query(
+    'SELECT * FROM media WHERE id = $1',
+    [mediaId]
+  );
+  return result.rows[0] || null;
+}
+
+async function canUserAccessMedia(userId, media) {
+  if (!media) return false;
+  
+  // Owner can always access
+  if (media.owner_user_id === userId) return true;
+  
+  // Check based on media kind
+  switch (media.kind) {
+    case 'avatar':
+      // Avatars are visible to all logged-in users
+      return true;
+      
+    case 'message_image':
+    case 'chat':
+      // Must be participant in the conversation
+      if (!media.conversation_id) return false;
+      const conv = await pool.query(
+        'SELECT * FROM conversations WHERE id = $1 AND (user1_id = $2 OR user2_id = $2)',
+        [media.conversation_id, userId]
+      );
+      return conv.rows.length > 0;
+      
+    default:
+      // Unknown kind - deny access
+      return false;
+  }
+}
+
 
 /* ──────────────────────────────────────────────
  *  CLEANUP
@@ -936,6 +1055,10 @@ module.exports = {
   createUser,
   findUserByEmail,
   findUserById,
+  findUserByToken,
+  setUserAuthToken,
+  clearUserAuthToken,
+  generateAuthToken,
   updateUserAvatarPath,
   verifyPassword,
   verifyUserEmail,
@@ -954,11 +1077,12 @@ module.exports = {
   addContact,
   removeContact,
   listContacts,
-    // messages
   getOrCreateConversation,
   sendMessage,
   listThreads,
   getThreadMessages,
   markThreadRead,
-
+  createMedia,
+  getMediaById,
+  canUserAccessMedia,
 };

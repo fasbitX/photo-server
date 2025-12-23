@@ -13,6 +13,7 @@ const { registerAuthRoutes } = require('./routes-auth');
 const { registerUserDashboardRoutes } = require('./routes-user-dashboard');
 const { registerMobileApiRoutes } = require('./routes-mobile-api');
 const { registerUsersAdminRoutes } = require('./routes-users-admin');
+const { registerMediaRoutes } = require('./routes-media');
 
 const app = express();
 
@@ -57,8 +58,9 @@ app.use(
   })
 );
 
-// Serve uploaded media files (LAN/MVP)
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// ✅ REMOVED: Public static /uploads route
+// Previously: app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// Now: All media access is authenticated through /media/* routes
 
 
 /* ──────────────────────────────────────────────
@@ -202,7 +204,9 @@ async function startServer() {
      *  REGISTER ROUTE MODULES
      * ────────────────────────────────────────────── */
 
-    // CRITICAL: Admin routes registered FIRST to avoid conflicts
+    // ✅ NEW: Media routes FIRST (authenticated media access)
+    registerMediaRoutes(app);
+
     // Admin routes (/admin/*, requires admin login)
     registerAdminRoutes(app, { requireAdmin, state });
 
@@ -215,10 +219,10 @@ async function startServer() {
     // User dashboard routes (/dashboard, /my-photos, /transactions, /account)
     registerUserDashboardRoutes(app);
 
-    // Upload routes for mobile app
+    // Upload routes for mobile app (now authenticated)
     registerUploadRoutes(app);
 
-    // Mobile API routes (for mobile app)
+    // Mobile API routes (for mobile app - now authenticated)
     registerMobileApiRoutes(app);
 
     /* ──────────────────────────────────────────────
@@ -244,6 +248,10 @@ async function startServer() {
 ║  User Login:  http://${HOST}:${PORT}/login             ║  
 ║  Admin Login: http://${HOST}:${PORT}/admin/login       ║
 ║  Admin Panel: http://${HOST}:${PORT}/admin/dashboard   ║    
+║                                                        ║
+║  ⚠️  Media Access: Now requires authentication         ║
+║     /uploads/* → REMOVED (public access blocked)       ║
+║     /media/:id → NEW (authenticated access only)       ║
 ║                                                        ║
 ╚════════════════════════════════════════════════════════╝
       `);

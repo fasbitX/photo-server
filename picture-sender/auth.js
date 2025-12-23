@@ -15,6 +15,7 @@ export function useAuth() {
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
+  const [authToken, setAuthToken] = useState(null);
   const [loading, setLoading] = useState(true);
   const [serverUrl, setServerUrl] = useState(null);
 
@@ -26,10 +27,12 @@ export function AuthProvider({ children }) {
   const loadStoredAuth = async () => {
     try {
       const storedUser = await AsyncStorage.getItem('user');
+      const storedToken = await AsyncStorage.getItem('authToken');
       const storedServer = await AsyncStorage.getItem('serverUrl');
       
-      if (storedUser) {
+      if (storedUser && storedToken) {
         setUser(JSON.parse(storedUser));
+        setAuthToken(storedToken);
       }
       if (storedServer) {
         setServerUrl(storedServer);
@@ -57,15 +60,17 @@ export function AuthProvider({ children }) {
         throw new Error(data.error || 'Login failed');
       }
 
-      if (!data.user) {
+      if (!data.user || !data.authToken) {
         throw new Error('Invalid response from server');
       }
 
-      // Store user and server
+      // Store user, token, and server
       await AsyncStorage.setItem('user', JSON.stringify(data.user));
+      await AsyncStorage.setItem('authToken', data.authToken);
       await AsyncStorage.setItem('serverUrl', server);
       
       setUser(data.user);
+      setAuthToken(data.authToken);
       setServerUrl(server);
 
       return { success: true };
@@ -114,23 +119,45 @@ export function AuthProvider({ children }) {
 
   const logout = async () => {
     try {
+      // Call logout endpoint if we have a token
+      if (authToken && serverUrl) {
+        try {
+          const url = `${serverUrl.replace(/\/+$/, '')}/api/mobile/logout`;
+          await fetch(url, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${authToken}`,
+            },
+          });
+        } catch (err) {
+          console.error('Logout endpoint error:', err);
+          // Continue with local logout even if server call fails
+        }
+      }
+
+      // Clear local storage
       await AsyncStorage.removeItem('user');
+      await AsyncStorage.removeItem('authToken');
       setUser(null);
+      setAuthToken(null);
     } catch (err) {
       console.error('Logout error:', err);
     }
   };
 
   const refreshUser = async () => {
-    if (!user || !serverUrl) return;
+    if (!authToken || !serverUrl) return;
 
     try {
       const url = `${serverUrl.replace(/\/+$/, '')}/api/mobile/user`;
       
       const response = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: user.email }),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`,
+        },
       });
 
       const data = await response.json();
@@ -138,20 +165,36 @@ export function AuthProvider({ children }) {
       if (response.ok && data.user) {
         await AsyncStorage.setItem('user', JSON.stringify(data.user));
         setUser(data.user);
+      } else if (response.status === 401) {
+        // Token is invalid, logout
+        await logout();
       }
     } catch (err) {
       console.error('Failed to refresh user:', err);
     }
   };
 
+  // Helper to get auth headers for API calls
+  const getAuthHeaders = () => {
+    if (!authToken) {
+      return { 'Content-Type': 'application/json' };
+    }
+    return {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${authToken}`,
+    };
+  };
+
   const value = {
     user,
+    authToken,
     serverUrl,
     loading,
     login,
     signup,
     logout,
     refreshUser,
+    getAuthHeaders,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

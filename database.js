@@ -230,16 +230,23 @@ function generateAccountNumber() {
   return `ACC${timestamp}${random}`;
 }
 
-function parseMmddyyyyToIsoDate(mmddyyyy) {
-  const s = String(mmddyyyy || '').trim();
-  // Expected: MM/DD/YYYY
+function normalizeDobToIsoDate(input) {
+  const s = String(input || '').trim();
+  if (!s) return null;
+
+  // Already ISO: YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+
+  // MM/DD/YYYY
   const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if (!m) return null;
+
   const month = String(m[1]).padStart(2, '0');
   const day = String(m[2]).padStart(2, '0');
   const year = String(m[3]);
   return `${year}-${month}-${day}`;
 }
+
 
 /* ──────────────────────────────────────────────
  *  USER OPERATIONS
@@ -252,7 +259,7 @@ async function createUser(userData) {
     const verificationToken = crypto.randomBytes(32).toString('hex');
     const now = Date.now();
 
-    const dobIso = parseMmddyyyyToIsoDate(userData.dateOfBirth);
+    const dobIso = normalizeDobToIsoDate(userData.dateOfBirth);
 
     console.log('Creating user with data:', {
       accountNumber,

@@ -17,23 +17,72 @@ import { useAuth } from './auth';
 
 const MAX_WIDTH = 300; // sets the maximum width of the screen
 
-function formatDate(timestamp) {
-  if (!timestamp) return 'N/A';
-  const date = new Date(Number(timestamp));
-  return date.toLocaleDateString('en-US', { 
-    year: 'numeric', 
-    month: 'long', 
-    day: 'numeric' 
+// --- Date helpers (robust + no timezone drift for date-only values) ---
+
+function formatDateJoined(value) {
+  // Accepts: epoch ms (number/string) OR ISO string
+  if (!value) return 'N/A';
+
+  let date;
+  if (typeof value === 'number') {
+    date = new Date(value);
+  } else if (typeof value === 'string') {
+    const trimmed = value.trim();
+    // numeric epoch string?
+    if (/^\d+$/.test(trimmed)) {
+      date = new Date(Number(trimmed));
+    } else {
+      date = new Date(trimmed);
+    }
+  } else {
+    return 'N/A';
+  }
+
+  if (Number.isNaN(date.getTime())) return 'N/A';
+
+  return date.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
   });
 }
 
-function formatDateOfBirth(dateStr) {
-  if (!dateStr) return '';
-  const date = new Date(dateStr);
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  const year = date.getFullYear();
-  return `${month}/${day}/${year}`;
+function mmddyyyyToIso(mmddyyyy) {
+  const s = String(mmddyyyy || '').trim();
+  if (!s) return null;
+
+  const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (!m) return null;
+
+  const mm = String(m[1]).padStart(2, '0');
+  const dd = String(m[2]).padStart(2, '0');
+  const yyyy = m[3];
+
+  // basic range checks (keeps MVP simple, blocks obvious junk)
+  const monthNum = Number(mm);
+  const dayNum = Number(dd);
+  const yearNum = Number(yyyy);
+  if (monthNum < 1 || monthNum > 12) return null;
+  if (dayNum < 1 || dayNum > 31) return null;
+  if (yearNum < 1900 || yearNum > 2100) return null;
+
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function isoToMmddyyyy(isoLike) {
+  // Accepts: "YYYY-MM-DD" or "YYYY-MM-DDTHH:MM:SS..." etc.
+  const s = String(isoLike || '').trim();
+  if (!s) return '';
+
+  const d = s.slice(0, 10); // take date portion
+  const m = d.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return '';
+
+  const yyyy = m[1];
+  const mm = String(Number(m[2])); // remove leading zero in UI
+  const dd = String(Number(m[3]));
+
+  return `${mm}/${dd}/${yyyy}`;
 }
 
 export default function AccountInfoScreen({ navigation }) {
@@ -53,24 +102,24 @@ export default function AccountInfoScreen({ navigation }) {
   const [zip, setZip] = useState('');
   const [phone, setPhone] = useState('');
   const [gender, setGender] = useState('');
-  const [dateOfBirth, setDateOfBirth] = useState('');
+  const [dateOfBirth, setDateOfBirth] = useState(''); // UI shows MM/DD/YYYY
   const [timezone, setTimezone] = useState('');
 
   // Load user data into form
   useEffect(() => {
-    if (user) {
-      setFirstName(user.first_name || '');
-      setLastName(user.last_name || '');
-      setUserName(user.user_name || '');
-      setStreetAddress(user.street_address || '');
-      setCity(user.city || '');
-      setState(user.state || '');
-      setZip(user.zip || '');
-      setPhone(user.phone || '');
-      setGender(user.gender || '');
-      setDateOfBirth(formatDateOfBirth(user.date_of_birth));
-      setTimezone(user.timezone || '');
-    }
+    if (!user) return;
+
+    setFirstName(user.first_name || '');
+    setLastName(user.last_name || '');
+    setUserName(user.user_name || '');
+    setStreetAddress(user.street_address || '');
+    setCity(user.city || '');
+    setState(user.state || '');
+    setZip(user.zip || '');
+    setPhone(user.phone || '');
+    setGender(user.gender || '');
+    setDateOfBirth(isoToMmddyyyy(user.date_of_birth)); // ✅ ISO -> MM/DD/YYYY (safe)
+    setTimezone(user.timezone || '');
   }, [user]);
 
   const handleSave = async () => {
@@ -93,8 +142,16 @@ export default function AccountInfoScreen({ navigation }) {
     }
 
     // Validate username format
-    if (!/^@[a-zA-Z0-9_#$%^&*()\-+=.]{1,20}$/.test(userName)) {
+    if (!/^@[a-zA-Z0-9_#$%^&*()\-+=.]{1,20}$/.test(userName.trim())) {
       Alert.alert('Error', 'Username must start with @ and contain valid characters.');
+      return;
+    }
+
+    // ✅ DOB: keep UI as MM/DD/YYYY, but send ISO to backend
+    const dobInput = dateOfBirth.trim();
+    const dobIso = dobInput ? mmddyyyyToIso(dobInput) : null;
+    if (dobInput && !dobIso) {
+      Alert.alert('Error', 'Date of Birth must be in MM/DD/YYYY format.');
       return;
     }
 
@@ -116,7 +173,7 @@ export default function AccountInfoScreen({ navigation }) {
           zip: zip.trim(),
           phone: phone.trim(),
           gender: gender.trim() || null,
-          date_of_birth: dateOfBirth.trim() || null,
+          date_of_birth: dobIso, // ✅ send ISO (YYYY-MM-DD) or null
           timezone: timezone.trim() || 'America/New_York',
         }),
       });
@@ -138,20 +195,19 @@ export default function AccountInfoScreen({ navigation }) {
   };
 
   const handleCancel = () => {
-    // Reset to original values
-    if (user) {
-      setFirstName(user.first_name || '');
-      setLastName(user.last_name || '');
-      setUserName(user.user_name || '');
-      setStreetAddress(user.street_address || '');
-      setCity(user.city || '');
-      setState(user.state || '');
-      setZip(user.zip || '');
-      setPhone(user.phone || '');
-      setGender(user.gender || '');
-      setDateOfBirth(formatDateOfBirth(user.date_of_birth));
-      setTimezone(user.timezone || '');
-    }
+    if (!user) return;
+
+    setFirstName(user.first_name || '');
+    setLastName(user.last_name || '');
+    setUserName(user.user_name || '');
+    setStreetAddress(user.street_address || '');
+    setCity(user.city || '');
+    setState(user.state || '');
+    setZip(user.zip || '');
+    setPhone(user.phone || '');
+    setGender(user.gender || '');
+    setDateOfBirth(isoToMmddyyyy(user.date_of_birth)); // ✅ reset using safe formatter
+    setTimezone(user.timezone || '');
     setEditing(false);
   };
 
@@ -179,36 +235,25 @@ export default function AccountInfoScreen({ navigation }) {
             <Text style={styles.headerTitle}>Account Info</Text>
 
             {editing ? (
-              <TouchableOpacity
-                onPress={handleCancel}
-                style={styles.headerTextBtn}
-                activeOpacity={0.6}
-              >
+              <TouchableOpacity onPress={handleCancel} style={styles.headerTextBtn} activeOpacity={0.6}>
                 <Text style={styles.headerBtnText}>Cancel</Text>
               </TouchableOpacity>
             ) : (
-              <TouchableOpacity
-                onPress={() => setEditing(true)}
-                style={styles.headerTextBtn}
-                activeOpacity={0.6}
-              >
+              <TouchableOpacity onPress={() => setEditing(true)} style={styles.headerTextBtn} activeOpacity={0.6}>
                 <Text style={styles.headerBtnText}>Edit</Text>
               </TouchableOpacity>
             )}
           </View>
 
           <ScrollView
-            contentContainerStyle={[
-              styles.content,
-              { paddingBottom: Math.max(insets.bottom, 16) }
-            ]}
+            contentContainerStyle={[styles.content, { paddingBottom: Math.max(insets.bottom, 16) }]}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
             {/* Read-only fields */}
             <View style={styles.card}>
               <Text style={styles.sectionTitle}>Account Details</Text>
-              
+
               <View style={styles.infoRow}>
                 <Text style={styles.label}>Account #</Text>
                 <Text style={styles.value}>{user?.account_number || 'N/A'}</Text>
@@ -223,16 +268,12 @@ export default function AccountInfoScreen({ navigation }) {
 
               <View style={styles.infoRow}>
                 <Text style={styles.label}>Status</Text>
-                <Text style={[styles.value, styles.statusActive]}>
-                  {user?.status || 'active'}
-                </Text>
+                <Text style={[styles.value, styles.statusActive]}>{user?.status || 'active'}</Text>
               </View>
 
               <View style={styles.infoRow}>
                 <Text style={styles.label}>Date Joined</Text>
-                <Text style={styles.value}>
-                  {formatDate(user?.created_date)}
-                </Text>
+                <Text style={styles.value}>{formatDateJoined(user?.created_date)}</Text>
               </View>
             </View>
 
@@ -395,9 +436,7 @@ export default function AccountInfoScreen({ navigation }) {
                 activeOpacity={0.85}
                 disabled={saving}
               >
-                <Text style={styles.saveBtnText}>
-                  {saving ? 'Saving...' : 'Save Changes'}
-                </Text>
+                <Text style={styles.saveBtnText}>{saving ? 'Saving...' : 'Save Changes'}</Text>
               </TouchableOpacity>
             )}
           </ScrollView>

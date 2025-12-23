@@ -149,11 +149,10 @@ export default function SignupScreen({ navigation }) {
       return;
     }
 
-    // Format as MM/DD/YYYY with zero-padding
-    const dateOfBirth = `${String(month).padStart(2, '0')}/${String(day).padStart(
-      2,
-      '0'
-    )}/${year}`;
+    // Format as ISO YYYY-MM-DD (store/transport format)
+    const mm = String(month).padStart(2, '0');
+    const dd = String(day).padStart(2, '0');
+    const dateOfBirthISO = `${year}-${mm}-${dd}`;
 
     // Validate the constructed date is valid
     const testDate = new Date(year, month - 1, day);
@@ -171,7 +170,7 @@ export default function SignupScreen({ navigation }) {
     const signupData = {
       firstName: formData.firstName,
       lastName: formData.lastName,
-      user_name: formData.userName, // Convert to snake_case for database
+      user_name: formData.userName,
       streetAddress: formData.streetAddress,
       city: formData.city,
       state: formData.state,
@@ -179,7 +178,8 @@ export default function SignupScreen({ navigation }) {
       phone: formData.phone,
       email: formData.email,
       gender: formData.gender,
-      dateOfBirth,
+      dateOfBirth: dateOfBirthISO,
+      date_of_birth: dateOfBirthISO,
       password: formData.password,
       confirmPassword: formData.confirmPassword,
     };

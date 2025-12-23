@@ -5,6 +5,7 @@ const {
   verifyPassword,
   createUser,
   findUserById,
+  updateUser,  
   createLoginSession,
   searchUsersByIdentifier,
   searchUsersAny,
@@ -63,18 +64,27 @@ function registerMobileApiRoutes(app) {
       
       // Return user data (without password hash)
       const userData = {
-        id: user.id,
-        account_number: user.account_number,
-        user_name: user.user_name,          
-        first_name: user.first_name,
-        last_name: user.last_name,
-        email: user.email,
-        phone: user.phone,
-        status: user.status,
-        account_balance: parseFloat(user.account_balance),
-        email_verified: user.email_verified,
-        avatar_path: user.avatar_path || null, 
-        };
+  id: user.id,
+  account_number: user.account_number,
+  user_name: user.user_name,
+  first_name: user.first_name,
+  last_name: user.last_name,
+  email: user.email,
+  phone: user.phone,
+  status: user.status,
+  account_balance: parseFloat(user.account_balance),
+  email_verified: user.email_verified,
+  avatar_path: user.avatar_path || null,
+  created_date: user.created_date,
+  timezone: user.timezone,
+  street_address: user.street_address,
+  city: user.city,
+  state: user.state,
+  zip: user.zip,
+  gender: user.gender,
+  date_of_birth: user.date_of_birth, // pg returns Date -> JSON becomes ISO string
+};
+
 
       
       res.json({ user: userData });
@@ -212,10 +222,10 @@ function registerMobileApiRoutes(app) {
         return res.status(404).json({ error: 'User not found' });
       }
       
-      const userData = {
+     const userData = {
         id: user.id,
         account_number: user.account_number,
-        user_name: user.user_name,          
+        user_name: user.user_name,
         first_name: user.first_name,
         last_name: user.last_name,
         email: user.email,
@@ -223,8 +233,17 @@ function registerMobileApiRoutes(app) {
         status: user.status,
         account_balance: parseFloat(user.account_balance),
         email_verified: user.email_verified,
-        avatar_path: user.avatar_path || null, 
+        avatar_path: user.avatar_path || null,
+        created_date: user.created_date,
+        timezone: user.timezone,
+        street_address: user.street_address,
+        city: user.city,
+        state: user.state,
+        zip: user.zip,
+        gender: user.gender,
+        date_of_birth: user.date_of_birth, // pg returns Date -> JSON becomes ISO string
         };
+
 
       
       res.json({ user: userData });

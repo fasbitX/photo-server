@@ -39,7 +39,7 @@ function toHandle(user) {
 }
 
 export default function DashboardScreen({ navigation }) {
-  const { user, serverUrl } = useAuth();
+  const { user, serverUrl, refreshUser } = useAuth();
   const insets = useSafeAreaInsets();
 
   const [threads, setThreads] = useState([]);
@@ -82,8 +82,15 @@ export default function DashboardScreen({ navigation }) {
   };
 
   useEffect(() => {
+    // ✅ REFRESH USER DATA when screen focuses
+    refreshUser?.();
     fetchThreads();
-    const unsub = navigation.addListener('focus', fetchThreads);
+    
+    const unsub = navigation.addListener('focus', () => {
+      refreshUser?.();
+      fetchThreads();
+    });
+    
     return unsub;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [navigation, user?.id, serverUrl]);

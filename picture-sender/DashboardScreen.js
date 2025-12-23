@@ -114,10 +114,11 @@ export default function DashboardScreen({ navigation }) {
   const [loadingThreads, setLoadingThreads] = useState(false);
   const [searchText, setSearchText] = useState('');
 
-  const avatarUrl = useMemo(
-    () => resolveUploadUrl(serverUrl, user?.avatar_path),
-    [serverUrl, user?.avatar_path]
-  );
+  const avatarUrl = useMemo(() => {
+    if (!serverUrl || !user?.id) return null;
+    const base = String(serverUrl).replace(/\/+$/, '');
+    return `${base}/media/avatar/${user.id}`;
+  }, [serverUrl, user?.id]);
 
   // user_name is REQUIRED (never fallback to email here)
   const handle = useMemo(() => String(user?.user_name || '').trim(), [user?.user_name]);

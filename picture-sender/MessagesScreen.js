@@ -14,7 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from './auth';
 
-const MAX_WIDTH = 288; // match DashboardScreen container width
+const MAX_WIDTH = 300; // sets the maximum width of the screen
 
 export default function TextScreen({ route, navigation }) {
   const { contact } = route.params || {};

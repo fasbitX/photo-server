@@ -13,7 +13,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from './auth';
 
-const MAX_WIDTH = 288; // 4 inches at ~72 DPI
+const MAX_WIDTH = 300; // sets the maximum width of the screen
 
 function safeServerBase(serverUrl) {
   return String(serverUrl || '').replace(/\/+$/, '');

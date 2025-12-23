@@ -15,7 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from './auth';
 
-const MAX_WIDTH = 288;
+const MAX_WIDTH = 300; // sets the maximum width of the screen
 
 function formatDate(timestamp) {
   if (!timestamp) return 'N/A';

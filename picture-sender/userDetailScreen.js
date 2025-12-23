@@ -17,7 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from './auth';
 
-const MAX_WIDTH = 288; // match Dashboard container width
+const MAX_WIDTH = 300; // sets the maximum width of the screen
 
 function initialsFromUser(u) {
   const a = String(u?.first_name || '').trim();
@@ -43,6 +43,9 @@ export default function UserDetailScreen({ navigation }) {
   const [searchText, setSearchText] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [searching, setSearching] = useState(false);
+
+  // NEW: avatar upload state (used for optional disable)
+  const [avatarUploading, setAvatarUploading] = useState(false);
 
   const avatarUrl = useMemo(
     () => resolveUploadUrl(serverUrl, user?.avatar_path),
@@ -129,7 +132,16 @@ export default function UserDetailScreen({ navigation }) {
     }
   };
 
-  const pickAndUploadAvatar = async () => {
+  // =========================================================
+  // AVATAR MENU + UPLOAD (native + web)
+  // =========================================================
+
+  // (Dead function for now)
+  const takePhotoForAvatar = async () => {
+    Alert.alert('Coming soon', 'Taking a photo for avatar isn’t enabled yet.');
+  };
+
+  const chooseAvatarFromLibrary = async () => {
     if (!user?.id || !serverUrl) return;
 
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -149,32 +161,66 @@ export default function UserDetailScreen({ navigation }) {
     const asset = result.assets?.[0];
     if (!asset?.uri) return;
 
-    const form = new FormData();
-    form.append('userId', String(user.id));
-    form.append('avatar', {
-      uri: asset.uri,
-      name: asset.fileName || `avatar-${Date.now()}.jpg`,
-      type: asset.mimeType || 'image/jpeg',
-    });
+    await uploadAvatarAsset(asset);
+  };
+
+  const uploadAvatarAsset = async (asset) => {
+    if (!user?.id || !serverUrl) return;
 
     try {
-      const url = `${serverUrl.replace(/\/+$/, '')}/api/mobile/user/avatar`;
+      setAvatarUploading(true);
+
+      const base = String(serverUrl).replace(/\/+$/, '');
+      const url = `${base}/api/mobile/user/avatar`;
+
+      const fileName =
+        asset.fileName ||
+        (typeof asset.uri === 'string' ? asset.uri.split('/').pop() : null) ||
+        `avatar-${Date.now()}.jpg`;
+
+      const mimeType = asset.mimeType || 'image/jpeg';
+
+      const form = new FormData();
+      form.append('userId', String(user.id));
+
+      if (Platform.OS === 'web') {
+        // WEB: FormData needs Blob
+        const resp = await fetch(asset.uri);
+        const blob = await resp.blob();
+        form.append('avatar', blob, fileName);
+      } else {
+        // NATIVE: uri object is ok
+        form.append('avatar', {
+          uri: asset.uri,
+          name: fileName,
+          type: mimeType,
+        });
+      }
+
       const res = await fetch(url, {
         method: 'POST',
         body: form,
-        headers: {
-          // Let fetch set correct boundary
-        },
+        // Do NOT set Content-Type; fetch will set boundary automatically
       });
-      const data = await res.json();
 
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || 'Upload failed');
 
       await refreshUser?.();
       Alert.alert('Saved', 'Your avatar was updated.');
     } catch (e) {
-      Alert.alert('Error', 'Failed to upload avatar.');
+      Alert.alert('Error', `Failed to upload avatar: ${String(e?.message || e)}`);
+    } finally {
+      setAvatarUploading(false);
     }
+  };
+
+  const openAvatarMenu = () => {
+    Alert.alert('Change Avatar', 'Choose an option:', [
+      { text: 'Take Photo (soon)', onPress: takePhotoForAvatar },
+      { text: 'Upload from device', onPress: chooseAvatarFromLibrary },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
   };
 
   const renderContact = ({ item }) => {
@@ -231,27 +277,33 @@ export default function UserDetailScreen({ navigation }) {
           </View>
 
           <TouchableOpacity
-            onPress={pickAndUploadAvatar}
-            style={styles.cameraBtn}
+            onPress={openAvatarMenu}
+            style={[
+              styles.cameraBtn,
+              // OPTIONAL disable styling: fade while uploading
+              avatarUploading ? { opacity: 0.5 } : null,
+            ]}
             activeOpacity={0.85}
             accessibilityRole="button"
             accessibilityLabel="Change avatar"
+            // OPTIONAL disable block:
+            disabled={avatarUploading}
           >
             <Ionicons name="camera" size={18} color="#FFFFFF" />
           </TouchableOpacity>
         </View>
       </View>
 
-    {/* Account info card - SIMPLE CLICKABLE VERSION */}
-        <TouchableOpacity 
+      {/* Account info card - SIMPLE CLICKABLE VERSION */}
+      <TouchableOpacity
         style={styles.accountInfoCard}
         onPress={() => navigation.navigate('AccountInfo')}
         activeOpacity={0.85}
-        >
+      >
         <Text style={styles.accountInfoTitle}>Account Info</Text>
-        
+
         <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
-        </TouchableOpacity>
+      </TouchableOpacity>
 
       {/* Search + add contacts */}
       <View style={styles.card}>
@@ -339,19 +391,19 @@ export default function UserDetailScreen({ navigation }) {
     >
       <View style={styles.outerContainer}>
         <View style={styles.container}>
-           <FlatList
-                data={contacts}
-                keyExtractor={(item) => String(item.id)}
-                renderItem={renderContact}
-                ListHeaderComponent={ListHeader}
-                contentContainerStyle={{
-                    padding: 16,
-                    paddingBottom: Math.max(insets.bottom, 16),
-                }}
-                keyboardShouldPersistTaps="handled"
-                ListEmptyComponent={loadingContacts ? null : <Text style={styles.emptyText}>No contacts yet.</Text>}
-                showsVerticalScrollIndicator={false}
-            />
+          <FlatList
+            data={contacts}
+            keyExtractor={(item) => String(item.id)}
+            renderItem={renderContact}
+            ListHeaderComponent={ListHeader}
+            contentContainerStyle={{
+              padding: 16,
+              paddingBottom: Math.max(insets.bottom, 16),
+            }}
+            keyboardShouldPersistTaps="handled"
+            ListEmptyComponent={loadingContacts ? null : <Text style={styles.emptyText}>No contacts yet.</Text>}
+            showsVerticalScrollIndicator={false}
+          />
         </View>
       </View>
     </KeyboardAvoidingView>
@@ -395,12 +447,12 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: '#020617',
     borderRadius: 12,
-    padding: 16,  // CHANGED from 20 to 16
-    marginBottom: 16,
+    padding: 16,
+    marginBottom: 5,
     borderWidth: 1,
     borderColor: '#1F2937',
-    minHeight: 38,  // ADD this line (~1cm = 38px)
-},
+    minHeight: 38,
+  },
   cardTitle: {
     fontSize: 18,
     fontWeight: '600',
@@ -456,7 +508,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: '#1F2937',
-    },
+  },
 
   infoRow: {
     flexDirection: 'row',
@@ -619,27 +671,26 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 3,
   },
-    accountInfoCard: {
+  accountInfoCard: {
     backgroundColor: '#020617',
     borderRadius: 12,
     padding: 16,
     marginBottom: 16,
     borderWidth: 1,
     borderColor: '#1F2937',
-    height: 48,  // CHANGED from minHeight/maxHeight to fixed height
+    height: 48, // fixed height
     flexDirection: 'row',
-    alignItems: 'center',  // This centers vertically
+    alignItems: 'center',
     justifyContent: 'space-between',
- },
- chevronRow: {
+  },
+  chevronRow: {
     alignItems: 'center',
     justifyContent: 'center',
- },
- accountInfoTitle: {
+  },
+  accountInfoTitle: {
     fontSize: 18,
     fontWeight: '600',
     color: '#FFFFFF',
-    margin: 0,  // Remove any margin
- },
-
+    margin: 0,
+  },
 });

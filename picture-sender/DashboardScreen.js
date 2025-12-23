@@ -15,7 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from './auth';
 
-const MAX_WIDTH = 288; // match app container width
+const MAX_WIDTH = 300; // sets the maximum width of the screen
 
 function initialsFromUser(u) {
   const a = String(u?.first_name || '').trim();
@@ -345,7 +345,7 @@ const styles = StyleSheet.create({
   balanceLabel: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#9CA3AF',
+    color: '#FFFFFF',
   },
   balanceValue: {
     fontSize: 15,

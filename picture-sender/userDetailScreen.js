@@ -1,4 +1,10 @@
 // userDetailScreen.js
+/* ====================================================================================
+The purpose of this page is to display the user's profile information,
+ including their avatar, name, and contact list. It also allows the user
+ to search for and add new contacts, as well as update their avatar.
+ =====================================================================================*/
+
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
@@ -17,7 +23,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from './auth';
 
-const MAX_WIDTH = 300; // sets the maximum width of the screen
+const MAX_WIDTH = 300;
 
 function initialsFromUser(u) {
   const a = String(u?.first_name || '').trim();
@@ -26,15 +32,95 @@ function initialsFromUser(u) {
   return i || '@';
 }
 
-function resolveUploadUrl(serverUrl, avatarPath) {
-  if (!serverUrl || !avatarPath) return null;
+/**
+ * Build a PRIVATE media URL that the server protects with Bearer token:
+ * /api/mobile/media?path=avatars/4/avatar-xxx.png
+ */
+function resolveMobileMediaUrl(serverUrl, filePath) {
+  if (!serverUrl || !filePath) return null;
   const base = String(serverUrl).replace(/\/+$/, '');
-  const clean = String(avatarPath).replace(/^\/+/, '');
-  return `${base}/uploads/${clean}`;
+  const clean = String(filePath).trim().replace(/^\/+/, '');
+  if (!clean) return null;
+  return `${base}/api/mobile/media?path=${encodeURIComponent(clean)}`;
+}
+
+/**
+ * AuthedImage
+ * - Native: can attach Authorization header to Image source
+ * - Web: fetch blob with Authorization, create object URL, render that
+ */
+function AuthedImage({ uri, authToken, style, fallback }) {
+  const [webObjectUrl, setWebObjectUrl] = useState(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    setFailed(false);
+
+    if (Platform.OS !== 'web') return;
+    if (!uri) {
+      setWebObjectUrl(null);
+      return;
+    }
+
+    // If no token, just try direct
+    if (!authToken) {
+      setWebObjectUrl(uri);
+      return;
+    }
+
+    let alive = true;
+    let createdUrl = null;
+
+    (async () => {
+      try {
+        const res = await fetch(uri, {
+          headers: { Authorization: `Bearer ${authToken}` },
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const blob = await res.blob();
+        createdUrl = URL.createObjectURL(blob);
+
+        if (!alive) {
+          URL.revokeObjectURL(createdUrl);
+          return;
+        }
+        setWebObjectUrl(createdUrl);
+      } catch (e) {
+        if (alive) {
+          setFailed(true);
+          setWebObjectUrl(null);
+        }
+      }
+    })();
+
+    return () => {
+      alive = false;
+      if (createdUrl) URL.revokeObjectURL(createdUrl);
+    };
+  }, [uri, authToken]);
+
+  if (!uri || failed) return fallback || null;
+
+  if (Platform.OS === 'web') {
+    if (!webObjectUrl) return fallback || null;
+    return <Image source={{ uri: webObjectUrl }} style={style} />;
+  }
+
+  // Native: pass headers
+  return (
+    <Image
+      source={{
+        uri,
+        headers: authToken ? { Authorization: `Bearer ${authToken}` } : undefined,
+      }}
+      style={style}
+      onError={() => setFailed(true)}
+    />
+  );
 }
 
 export default function UserDetailScreen({ navigation }) {
-  const { user, serverUrl, refreshUser } = useAuth();
+  const { user, serverUrl, refreshUser, authToken, getAuthHeaders } = useAuth();
   const insets = useSafeAreaInsets();
 
   const [contacts, setContacts] = useState([]);
@@ -44,11 +130,10 @@ export default function UserDetailScreen({ navigation }) {
   const [searchResults, setSearchResults] = useState([]);
   const [searching, setSearching] = useState(false);
 
-  // NEW: avatar upload state (used for optional disable)
   const [avatarUploading, setAvatarUploading] = useState(false);
 
   const avatarUrl = useMemo(
-    () => resolveUploadUrl(serverUrl, user?.avatar_path),
+    () => resolveMobileMediaUrl(serverUrl, user?.avatar_path),
     [serverUrl, user?.avatar_path]
   );
 
@@ -63,13 +148,13 @@ export default function UserDetailScreen({ navigation }) {
     if (!user?.id || !serverUrl) return;
     setLoadingContacts(true);
     try {
-      const url = `${serverUrl.replace(/\/+$/, '')}/api/mobile/contacts/list`;
+      const url = `${String(serverUrl).replace(/\/+$/, '')}/api/mobile/contacts/list`;
       const res = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(), // ✅ FIX 401
         body: JSON.stringify({ requesterId: user.id }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (res.ok) setContacts(Array.isArray(data.contacts) ? data.contacts : []);
     } catch (e) {
       // silent for MVP
@@ -87,7 +172,7 @@ export default function UserDetailScreen({ navigation }) {
     });
     return unsub;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [navigation, user?.id, serverUrl]);
+  }, [navigation, user?.id, serverUrl, authToken]);
 
   const runSearch = async () => {
     const q = String(searchText || '').trim();
@@ -99,14 +184,15 @@ export default function UserDetailScreen({ navigation }) {
 
     setSearching(true);
     try {
-      const url = `${serverUrl.replace(/\/+$/, '')}/api/mobile/contacts/search-any`;
+      const url = `${String(serverUrl).replace(/\/+$/, '')}/api/mobile/contacts/search-any`;
       const res = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(), // ✅ FIX 401
         body: JSON.stringify({ requesterId: user.id, q }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (res.ok) setSearchResults(Array.isArray(data.results) ? data.results : []);
+      else setSearchResults([]);
     } catch (e) {
       setSearchResults([]);
     } finally {
@@ -117,15 +203,18 @@ export default function UserDetailScreen({ navigation }) {
   const addContact = async (contactUserId) => {
     if (!user?.id || !serverUrl || !contactUserId) return;
     try {
-      const url = `${serverUrl.replace(/\/+$/, '')}/api/mobile/contacts/add`;
+      const url = `${String(serverUrl).replace(/\/+$/, '')}/api/mobile/contacts/add`;
       const res = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(), // ✅ FIX 401
         body: JSON.stringify({ requesterId: user.id, contactUserId }),
       });
       if (res.ok) {
         await fetchContacts();
         Alert.alert('Added', 'Contact added.');
+      } else {
+        const data = await res.json().catch(() => ({}));
+        Alert.alert('Error', data?.error || 'Failed to add contact.');
       }
     } catch (e) {
       Alert.alert('Error', 'Failed to add contact.');
@@ -133,13 +222,8 @@ export default function UserDetailScreen({ navigation }) {
   };
 
   // =========================================================
-  // AVATAR MENU + UPLOAD (native + web)
+  // AVATAR UPLOAD
   // =========================================================
-
-  // (Dead function for now)
-  const takePhotoForAvatar = async () => {
-    Alert.alert('Coming soon', 'Taking a photo for avatar isn’t enabled yet.');
-  };
 
   const chooseAvatarFromLibrary = async () => {
     if (!user?.id || !serverUrl) return;
@@ -151,12 +235,11 @@ export default function UserDetailScreen({ navigation }) {
     }
 
     const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'], // <-- works on web/native, no enum needed
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.9,
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.9,
     });
-
 
     if (result.canceled) return;
     const asset = result.assets?.[0];
@@ -185,12 +268,10 @@ export default function UserDetailScreen({ navigation }) {
       form.append('userId', String(user.id));
 
       if (Platform.OS === 'web') {
-        // WEB: FormData needs Blob
         const resp = await fetch(asset.uri);
         const blob = await resp.blob();
         form.append('avatar', blob, fileName);
       } else {
-        // NATIVE: uri object is ok
         form.append('avatar', {
           uri: asset.uri,
           name: fileName,
@@ -201,7 +282,9 @@ export default function UserDetailScreen({ navigation }) {
       const res = await fetch(url, {
         method: 'POST',
         body: form,
-        // Do NOT set Content-Type; fetch will set boundary automatically
+        // ✅ include auth (once server enforces it)
+        headers: authToken ? { Authorization: `Bearer ${authToken}` } : undefined,
+        // DO NOT set Content-Type; boundary is automatic
       });
 
       const data = await res.json().catch(() => ({}));
@@ -216,14 +299,6 @@ export default function UserDetailScreen({ navigation }) {
     }
   };
 
-  const openAvatarMenu = () => {
-    Alert.alert('Change Avatar', 'Choose an option:', [
-      { text: 'Take Photo (soon)', onPress: takePhotoForAvatar },
-      { text: 'Upload from device', onPress: chooseAvatarFromLibrary },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
-  };
-
   const renderContact = ({ item }) => {
     const c = item || {};
     const name =
@@ -232,7 +307,7 @@ export default function UserDetailScreen({ navigation }) {
       c.email ||
       'Contact';
 
-    const cAvatarUrl = resolveUploadUrl(serverUrl, c.avatar_path);
+    const cAvatarUrl = resolveMobileMediaUrl(serverUrl, c.avatar_path);
 
     return (
       <TouchableOpacity
@@ -242,7 +317,12 @@ export default function UserDetailScreen({ navigation }) {
       >
         <View style={styles.contactAvatarWrap}>
           {cAvatarUrl ? (
-            <Image source={{ uri: cAvatarUrl }} style={styles.contactAvatarImg} />
+            <AuthedImage
+              uri={cAvatarUrl}
+              authToken={authToken}
+              style={styles.contactAvatarImg}
+              fallback={<Text style={styles.contactAvatarInitials}>{initialsFromUser(c)}</Text>}
+            />
           ) : (
             <Text style={styles.contactAvatarInitials}>{initialsFromUser(c)}</Text>
           )}
@@ -271,33 +351,38 @@ export default function UserDetailScreen({ navigation }) {
         <View style={styles.avatarRow}>
           <View style={styles.bigAvatarWrap}>
             {avatarUrl ? (
-              <Image source={{ uri: avatarUrl }} style={styles.bigAvatarImg} />
+              <AuthedImage
+                uri={avatarUrl}
+                authToken={authToken}
+                style={styles.bigAvatarImg}
+                fallback={<Text style={styles.bigAvatarInitials}>{initialsFromUser(user)}</Text>}
+              />
             ) : (
               <Text style={styles.bigAvatarInitials}>{initialsFromUser(user)}</Text>
             )}
           </View>
 
           <TouchableOpacity
-            onPress={() => navigation.navigate('Avatar')}
-            style={styles.cameraBtn}
+            onPress={chooseAvatarFromLibrary}
+            disabled={avatarUploading}
+            style={[styles.cameraBtn, avatarUploading && { opacity: 0.6 }]}
             activeOpacity={0.85}
             accessibilityRole="button"
             accessibilityLabel="Change avatar"
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-            >
+          >
             <Ionicons name="camera" size={18} color="#FFFFFF" />
           </TouchableOpacity>
         </View>
       </View>
 
-      {/* Account info card - SIMPLE CLICKABLE VERSION */}
+      {/* Account info card */}
       <TouchableOpacity
         style={styles.accountInfoCard}
         onPress={() => navigation.navigate('AccountInfo')}
         activeOpacity={0.85}
       >
         <Text style={styles.accountInfoTitle}>Account Info</Text>
-
         <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
       </TouchableOpacity>
 
@@ -334,13 +419,19 @@ export default function UserDetailScreen({ navigation }) {
                 `${r.first_name || ''} ${r.last_name || ''}`.trim() ||
                 r.email ||
                 'User';
-              const rAvatarUrl = resolveUploadUrl(serverUrl, r.avatar_path);
+
+              const rAvatarUrl = resolveMobileMediaUrl(serverUrl, r.avatar_path);
 
               return (
                 <View key={String(r.id)} style={styles.searchResultRow}>
                   <View style={styles.searchAvatarWrap}>
                     {rAvatarUrl ? (
-                      <Image source={{ uri: rAvatarUrl }} style={styles.searchAvatarImg} />
+                      <AuthedImage
+                        uri={rAvatarUrl}
+                        authToken={authToken}
+                        style={styles.searchAvatarImg}
+                        fallback={<Text style={styles.searchAvatarInitials}>{initialsFromUser(r)}</Text>}
+                      />
                     ) : (
                       <Text style={styles.searchAvatarInitials}>{initialsFromUser(r)}</Text>
                     )}
@@ -355,7 +446,11 @@ export default function UserDetailScreen({ navigation }) {
                     </Text>
                   </View>
 
-                  <TouchableOpacity onPress={() => addContact(r.id)} activeOpacity={0.85} style={styles.addBtn}>
+                  <TouchableOpacity
+                    onPress={() => addContact(r.id)}
+                    activeOpacity={0.85}
+                    style={styles.addBtn}
+                  >
                     <Text style={styles.addBtnText}>Add</Text>
                   </TouchableOpacity>
                 </View>
@@ -419,27 +514,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#111827',
   },
 
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingBottom: 14,
-    backgroundColor: '#020617',
-    borderBottomWidth: 1,
-    borderBottomColor: '#1F2937',
-  },
-  headerTitle: {
-    flex: 1,
-    textAlign: 'center',
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-  },
-  headerIconBtn: {
-    padding: 12,
-    marginLeft: -12,
-  },
   card: {
     backgroundColor: '#020617',
     borderRadius: 12,
@@ -508,24 +582,6 @@ const styles = StyleSheet.create({
     borderColor: '#1F2937',
   },
 
-  infoRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 12,
-    marginBottom: 12,
-  },
-  infoLabel: {
-    fontSize: 14,
-    color: '#9CA3AF',
-  },
-  infoValue: {
-    flex: 1,
-    textAlign: 'right',
-    fontSize: 14,
-    color: '#FFFFFF',
-    fontWeight: '600',
-  },
-
   searchRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -571,35 +627,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     overflow: 'hidden',
   },
-  searchAvatarImg: {
-    width: '100%',
-    height: '100%',
-  },
-  searchAvatarInitials: {
-    color: '#93C5FD',
-    fontWeight: '900',
-  },
-  searchName: {
-    color: '#FFF',
-    fontWeight: '900',
-    fontSize: 14,
-  },
-  searchSub: {
-    color: '#9CA3AF',
-    fontSize: 12,
-    marginTop: 3,
-  },
+  searchAvatarImg: { width: '100%', height: '100%' },
+  searchAvatarInitials: { color: '#93C5FD', fontWeight: '900' },
+  searchName: { color: '#FFF', fontWeight: '900', fontSize: 14 },
+  searchSub: { color: '#9CA3AF', fontSize: 12, marginTop: 3 },
   addBtn: {
     backgroundColor: '#1D4ED8',
     borderRadius: 999,
     paddingHorizontal: 14,
     paddingVertical: 10,
   },
-  addBtnText: {
-    color: '#FFF',
-    fontWeight: '900',
-    fontSize: 12,
-  },
+  addBtnText: { color: '#FFF', fontWeight: '900', fontSize: 12 },
 
   contactsHeaderRow: {
     flexDirection: 'row',
@@ -617,11 +655,7 @@ const styles = StyleSheet.create({
     borderColor: '#1F2937',
     backgroundColor: '#0B1220',
   },
-  smallLinkText: {
-    color: '#93C5FD',
-    fontSize: 12,
-    fontWeight: '800',
-  },
+  smallLinkText: { color: '#93C5FD', fontSize: 12, fontWeight: '800' },
 
   contactRow: {
     flexDirection: 'row',
@@ -647,28 +681,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     overflow: 'hidden',
   },
-  contactAvatarImg: {
-    width: '100%',
-    height: '100%',
-  },
-  contactAvatarInitials: {
-    color: '#93C5FD',
-    fontWeight: '900',
-  },
-  contactTextWrap: {
-    flex: 1,
-    minWidth: 0,
-  },
-  contactName: {
-    color: '#FFF',
-    fontWeight: '900',
-    fontSize: 14,
-  },
-  contactSub: {
-    color: '#9CA3AF',
-    fontSize: 12,
-    marginTop: 3,
-  },
+  contactAvatarImg: { width: '100%', height: '100%' },
+  contactAvatarInitials: { color: '#93C5FD', fontWeight: '900' },
+  contactTextWrap: { flex: 1, minWidth: 0 },
+  contactName: { color: '#FFF', fontWeight: '900', fontSize: 14 },
+  contactSub: { color: '#9CA3AF', fontSize: 12, marginTop: 3 },
+
   accountInfoCard: {
     backgroundColor: '#020617',
     borderRadius: 12,
@@ -676,14 +694,10 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     borderWidth: 1,
     borderColor: '#1F2937',
-    height: 48, // fixed height
+    height: 48,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-  },
-  chevronRow: {
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   accountInfoTitle: {
     fontSize: 18,

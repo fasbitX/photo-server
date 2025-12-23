@@ -13,16 +13,29 @@ const uploadDir = path.join(__dirname, 'uploads');
  * ────────────────────────────────────────────── */
 async function requireAuth(req, res, next) {
   try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    const authHeader = String(req.headers.authorization || '');
+    const headerToken = authHeader.startsWith('Bearer ')
+      ? authHeader.slice('Bearer '.length).trim()
+      : null;
+
+    const queryToken =
+      typeof req.query.token === 'string' ? req.query.token.trim() : null;
+
+    const token = headerToken || queryToken;
+
+    if (!token) {
       return res.status(401).json({ error: 'No authentication token provided' });
     }
 
-    const token = authHeader.substring(7);
     const user = await findUserByToken(token);
 
-    if (!user) return res.status(401).json({ error: 'Invalid or expired token' });
-    if (user.status !== 'active') return res.status(403).json({ error: 'Account is not active' });
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid or expired token' });
+    }
+
+    if (user.status !== 'active') {
+      return res.status(403).json({ error: 'Account is not active' });
+    }
 
     req.user = user;
     return next();
@@ -31,6 +44,7 @@ async function requireAuth(req, res, next) {
     return res.status(500).json({ error: 'Authentication failed' });
   }
 }
+
 
 /* ──────────────────────────────────────────────
  *  PATH SAFETY

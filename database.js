@@ -1,4 +1,10 @@
 // database.js
+// The purpose of this file is to provide a structured and modular approach to 
+// handling database operations in a Node.js application. It includes functions 
+// for initializing the database, hashing passwords, generating tokens, 
+// creating and managing users, handling password resets, and performing transactions.
+
+
 const { Pool } = require('pg');
 const crypto = require('crypto');
 

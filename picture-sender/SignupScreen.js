@@ -1,4 +1,7 @@
 // SignupScreen.js
+// This file contains the implementation of the signup screen for a React Native application.
+// It includes form validation, state management, and integration with an authentication service.
+
 import React, { useState, useRef } from 'react';
 import {
   View,

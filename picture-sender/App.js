@@ -32,6 +32,9 @@ import TextScreen from './TextScreen';
 import UserDetailScreen from './userDetailScreen';
 import AccountInfoScreen from './AccountInfoScreen';
 import AvatarScreen from './AvatarScreen';
+import * as SplashScreen from 'expo-splash-screen';
+
+SplashScreen.preventAutoHideAsync();
 
 
 const Stack = createNativeStackNavigator();
@@ -340,9 +343,42 @@ function AppNavigator() {
 }
 
 // Root App component
+import React, { useEffect, useState } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import * as SplashScreen from 'expo-splash-screen';
+
+import { NavigationContainer } from '@react-navigation/native';
+import { AuthProvider } from './auth';
+import { AdminProvider } from './admin';
+import AppNavigator from './controller';
+
+// Keep the native splash visible until we explicitly hide it
+SplashScreen.preventAutoHideAsync().catch(() => {});
 
 export default function App() {
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+
+    (async () => {
+      // Hold splash for ~2 seconds (add your startup work here if you want)
+      await new Promise((r) => setTimeout(r, 2000));
+
+      if (!mounted) return;
+
+      setReady(true);
+      await SplashScreen.hideAsync().catch(() => {});
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  // While not ready, render nothing (splash stays up)
+  if (!ready) return null;
+
   return (
     <SafeAreaProvider>
       <AuthProvider>
@@ -355,7 +391,6 @@ export default function App() {
     </SafeAreaProvider>
   );
 }
-
 
 const styles = StyleSheet.create({
   container: {

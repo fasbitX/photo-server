@@ -271,6 +271,14 @@ function ZoomableImageModal({
     }
   };
 
+  // ✅ ADD DEBUG LOGGING
+  React.useEffect(() => {
+    if (visible && uri) {
+      console.log('[ZoomableImageModal] Opening viewer with URI:', uri);
+      console.log('[ZoomableImageModal] Metadata:', viewerMeta);
+    }
+  }, [visible, uri, viewerMeta]);
+
   return (
     <Modal
       visible={visible}
@@ -322,9 +330,9 @@ function ZoomableImageModal({
         >
           <Pressable style={styles.viewerImageWrap} onPress={() => {}}>
             <PanGestureHandler onGestureEvent={onPanEvent} onHandlerStateChange={onPanStateChange}>
-              <Animated.View>
+              <Animated.View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
                 <PinchGestureHandler onGestureEvent={onPinchEvent} onHandlerStateChange={onPinchStateChange}>
-                  <Animated.View>
+                  <Animated.View style={{ alignItems: 'center', justifyContent: 'center' }}>
                     {uri ? (
                       <Animated.View
                         style={[
@@ -337,12 +345,31 @@ function ZoomableImageModal({
                           source={{ uri }}
                           style={styles.viewerImage}
                           resizeMode="contain"
-                          onLoadStart={() => console.log('[viewer] load start', uri)}
-                          onLoadEnd={() => console.log('[viewer] load end', uri)}
-                          onError={(e) => console.log('[viewer] load error', uri, e?.nativeEvent)}
+                          onLoadStart={() => console.log('[viewer] Image load start:', uri)}
+                          onLoad={(e) => {
+                            console.log('[viewer] Image loaded successfully:', {
+                              uri,
+                              width: e?.nativeEvent?.source?.width,
+                              height: e?.nativeEvent?.source?.height,
+                            });
+                          }}
+                          onError={(e) => {
+                            console.error('[viewer] Image load ERROR:', {
+                              uri,
+                              error: e?.nativeEvent?.error,
+                            });
+                            Alert.alert(
+                              'Image Load Error',
+                              `Failed to load image. URI: ${uri}\n\nError: ${JSON.stringify(e?.nativeEvent)}`
+                            );
+                          }}
                         />
                       </Animated.View>
-                    ) : null}
+                    ) : (
+                      <View style={{ padding: 20 }}>
+                        <Text style={{ color: '#FFFFFF', fontSize: 16 }}>No image URI provided</Text>
+                      </View>
+                    )}
                   </Animated.View>
                 </PinchGestureHandler>
               </Animated.View>
@@ -836,14 +863,23 @@ export default function TextScreen({ route }) {
                     <View style={[styles.bubble, mine ? styles.mine : styles.theirs]}>
                       {!!imageUri && (
                         <Pressable
-                          onPress={() =>
+                          onPress={() => {
+                            console.log('[renderItem] Opening viewer with:', {
+                              imageUri,
+                              attachmentPath: attachmentPath || null,
+                              originalName,
+                              mime,
+                              hasLocalUri: !!localUri,
+                              hasAttachmentPath: !!attachmentPath,
+                            });
+                            
                             openViewer({
                               uri: imageUri,
                               attachmentPath: attachmentPath || null,
                               originalName,
                               mime,
-                            })
-                          }
+                            });
+                          }}
                           onContextMenu={
                             Platform.OS === 'web'
                               ? (e) => {
@@ -856,13 +892,24 @@ export default function TextScreen({ route }) {
                           }
                           style={styles.attachmentPressable}
                         >
-                          <Image source={{ uri: imageUri }} style={styles.attachmentImg} resizeMode="cover" />
+                          <Image 
+                            source={{ uri: imageUri }} 
+                            style={styles.attachmentImg} 
+                            resizeMode="cover"
+                            onError={(e) => {
+                              console.error('[bubble] Thumbnail load error:', {
+                                uri: imageUri,
+                                error: e?.nativeEvent,
+                              });
+                            }}
+                          />
                         </Pressable>
                       )}
 
                       {!!item.content && <Text style={styles.bubbleText}>{String(item.content)}</Text>}
                     </View>
                   );
+
                 }}
               />
 

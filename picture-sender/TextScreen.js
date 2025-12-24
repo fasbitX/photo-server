@@ -19,7 +19,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Crypto from 'expo-crypto';
 import nacl from 'tweetnacl';
 import * as naclUtil from 'tweetnacl-util';
@@ -52,11 +52,8 @@ function initialsFromUser(u) {
 }
 
 function makeSignatureBase64({ timestamp, originalName }) {
-  // server expects message `${timestamp}:${originalName}`
   const message = `${timestamp}:${originalName}`;
   const messageBytes = naclUtil.decodeUTF8(message);
-
-  // SECRET_KEY_BASE64 should be the nacl signing secret key (64 bytes)
   const secretKey = naclUtil.decodeBase64(SECRET_KEY_BASE64);
   const sig = nacl.sign.detached(messageBytes, secretKey);
   return naclUtil.encodeBase64(sig);
@@ -80,7 +77,6 @@ function arrayBufferToBase64(ab) {
 }
 
 async function readUriAsBase64(uri) {
-  // Web path stays the same
   if (Platform.OS === 'web') {
     const resp = await fetch(uri);
     if (!resp.ok) throw new Error(`Failed to read file (web): ${resp.status}`);
@@ -89,13 +85,11 @@ async function readUriAsBase64(uri) {
     return arrayBufferToBase64(ab);
   }
 
-  // Native: don't rely on FileSystem.EncodingType (it can be undefined)
   const encoding = FileSystem?.EncodingType?.Base64 ?? 'base64';
 
   try {
     return await FileSystem.readAsStringAsync(uri, { encoding });
   } catch (e) {
-    // Android ImagePicker often gives content:// URIs — copy to cache then read
     const msg = String(e?.message || e);
     const looksLikeContentUri = String(uri || '').startsWith('content://');
 
@@ -149,7 +143,6 @@ function ZoomableImageModal({
   insets,
   footerText,
 }) {
-  // Web: keep it simple (browser already zooms, right click works)
   if (Platform.OS === 'web') {
     return (
       <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -186,7 +179,6 @@ function ZoomableImageModal({
                   style={styles.viewerImage}
                   resizeMode="contain"
                   onContextMenu={(e) => {
-                    // right-click -> open full size in new tab
                     try {
                       e.preventDefault?.();
                     } catch {}
@@ -209,7 +201,6 @@ function ZoomableImageModal({
     );
   }
 
-  // Native: pinch + pan (Animated + gesture-handler)
   const baseScale = React.useRef(new Animated.Value(1)).current;
   const pinchScale = React.useRef(new Animated.Value(1)).current;
   const scale = Animated.multiply(baseScale, pinchScale);
@@ -224,14 +215,10 @@ function ZoomableImageModal({
 
   const last = React.useRef({ x: 0, y: 0, s: 1 }).current;
 
-  const onPinchEvent = Animated.event([{ nativeEvent: { scale: pinchScale } }], {
+  const onPinchEvent = Animated.event([{ nativeEvent: { scale: pinchScale } }], { useNativeDriver: true });
+  const onPanEvent = Animated.event([{ nativeEvent: { translationX: panX, translationY: panY } }], {
     useNativeDriver: true,
   });
-
-  const onPanEvent = Animated.event(
-    [{ nativeEvent: { translationX: panX, translationY: panY } }],
-    { useNativeDriver: true }
-  );
 
   const resetTransforms = () => {
     last.x = 0;
@@ -248,8 +235,6 @@ function ZoomableImageModal({
   const onPinchStateChange = (e) => {
     if (e.nativeEvent.oldState === State.ACTIVE) {
       last.s *= e.nativeEvent.scale;
-
-      // clamp zoom
       if (last.s < 1) last.s = 1;
       if (last.s > 6) last.s = 6;
 
@@ -348,7 +333,7 @@ function ZoomableImageModal({
                         ]}
                       >
                         <Image
-                          key={uri} // ✅ forces refresh if uri changes
+                          key={uri}
                           source={{ uri }}
                           style={styles.viewerImage}
                           resizeMode="contain"
@@ -358,7 +343,6 @@ function ZoomableImageModal({
                         />
                       </Animated.View>
                     ) : null}
-
                   </Animated.View>
                 </PinchGestureHandler>
               </Animated.View>
@@ -383,14 +367,12 @@ export default function TextScreen({ route }) {
   const insets = useSafeAreaInsets();
 
   const [messages, setMessages] = useState([]);
-
   const [text, setText] = useState('');
   const [loading, setLoading] = useState(false);
 
   const [pendingAsset, setPendingAsset] = useState(null);
   const [uploading, setUploading] = useState(false);
 
-  // ✅ one-line baseline for the input; grows upward as the user types
   const INPUT_BASELINE = 22;
   const [inputHeight, setInputHeight] = useState(INPUT_BASELINE);
 
@@ -399,11 +381,10 @@ export default function TextScreen({ route }) {
   }, [text]);
 
   const timerRef = useRef(null);
-  const busyRef = useRef(false); // ✅ prevents polling overwriting optimistic messages
+  const busyRef = useRef(false);
 
   const baseUrl = useMemo(() => cleanServerUrl(serverUrl), [serverUrl]);
 
-  // user_name only (fallback to @unknown)
   const contactHandle = useMemo(() => {
     const h = String(contact?.user_name || '').trim();
     return h || '@unknown';
@@ -412,10 +393,7 @@ export default function TextScreen({ route }) {
   const contactAvatarUrl = useMemo(() => {
     const p = String(contact?.avatar_path || '').trim().replace(/^\/+/, '');
     if (!baseUrl || !p) return '';
-    // query token so Image loads on web (no headers)
-    return `${baseUrl}/api/mobile/media?path=${encodeURIComponent(p)}&token=${encodeURIComponent(
-      authToken || ''
-    )}`;
+    return `${baseUrl}/api/mobile/media?path=${encodeURIComponent(p)}&token=${encodeURIComponent(authToken || '')}`;
   }, [baseUrl, contact?.avatar_path, authToken]);
 
   const getPrivateMediaUrl = (attachmentPath) => {
@@ -428,16 +406,10 @@ export default function TextScreen({ route }) {
   const HEADER_BAR_HEIGHT = 64;
   const keyboardOffset = Platform.OS === 'ios' ? insets.top + HEADER_BAR_HEIGHT : 0;
 
-  // ─────────────────────────────────────────────────────────────
-  // Image viewer state (tap image → full-screen + actions)
-  // ─────────────────────────────────────────────────────────────
+  // Viewer state
   const [viewerVisible, setViewerVisible] = useState(false);
   const [viewerUri, setViewerUri] = useState('');
-  const [viewerMeta, setViewerMeta] = useState({
-    attachmentPath: null,
-    originalName: null,
-    mime: null,
-  });
+  const [viewerMeta, setViewerMeta] = useState({ attachmentPath: null, originalName: null, mime: null });
   const [viewerWorking, setViewerWorking] = useState(false);
 
   // Forward modal
@@ -448,11 +420,7 @@ export default function TextScreen({ route }) {
   const openViewer = ({ uri, attachmentPath, originalName, mime }) => {
     if (!uri) return;
     setViewerUri(uri);
-    setViewerMeta({
-      attachmentPath: attachmentPath || null,
-      originalName: originalName || null,
-      mime: mime || null,
-    });
+    setViewerMeta({ attachmentPath: attachmentPath || null, originalName: originalName || null, mime: mime || null });
     setViewerVisible(true);
   };
 
@@ -475,7 +443,6 @@ export default function TextScreen({ route }) {
   const handleSave = async () => {
     if (!viewerUri) return;
 
-    // Web: download file
     if (Platform.OS === 'web') {
       const name = safeFileName(viewerMeta?.originalName, 'image.jpg');
       webDownload(viewerUri, name);
@@ -486,7 +453,6 @@ export default function TextScreen({ route }) {
     try {
       const ok = await ensureMediaPerm();
       if (!ok) return;
-
       const localUri = await downloadToCacheNative(viewerUri, viewerMeta?.originalName);
       await MediaLibrary.saveToLibraryAsync(localUri);
       Alert.alert('Saved', 'Image saved to your photo library.');
@@ -500,16 +466,13 @@ export default function TextScreen({ route }) {
   const handleShare = async () => {
     if (!viewerUri) return;
 
-    // Web: best effort
     if (Platform.OS === 'web') {
       try {
         if (typeof navigator !== 'undefined' && navigator.share) {
           await navigator.share({ url: viewerUri, title: viewerMeta?.originalName || 'Image' });
           return;
         }
-      } catch {
-        // ignore and fallback
-      }
+      } catch {}
       webOpen(viewerUri);
       return;
     }
@@ -536,10 +499,7 @@ export default function TextScreen({ route }) {
     try {
       const res = await fetch(`${baseUrl}/api/mobile/contacts/list`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${authToken}`,
-        },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
         body: JSON.stringify({ requesterId: user.id }),
       });
 
@@ -554,7 +514,6 @@ export default function TextScreen({ route }) {
   };
 
   const handleForward = async () => {
-    // Forward requires a server attachment_path so the receiver can access it.
     if (!viewerMeta?.attachmentPath) {
       Alert.alert('Forward', 'This image is not fully uploaded yet, so it can’t be forwarded.');
       return;
@@ -572,10 +531,7 @@ export default function TextScreen({ route }) {
     try {
       const res = await fetch(`${baseUrl}/api/mobile/messages/send`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${authToken}`,
-        },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
         body: JSON.stringify({
           senderId: user.id,
           recipientId: targetId,
@@ -598,8 +554,6 @@ export default function TextScreen({ route }) {
     }
   };
 
-  // ─────────────────────────────────────────────────────────────
-
   const fetchThread = async () => {
     if (busyRef.current) return;
     if (!user?.id || !contact?.id || !baseUrl || !authToken) return;
@@ -609,20 +563,12 @@ export default function TextScreen({ route }) {
       const url = `${baseUrl}/api/mobile/messages/thread`;
       const res = await fetch(url, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${authToken}`,
-        },
-        body: JSON.stringify({
-          contactUserId: contact.id,
-          limit: 50,
-        }),
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify({ contactUserId: contact.id, limit: 50 }),
       });
 
       const data = await res.json().catch(() => ({}));
-      if (res.ok) {
-        setMessages(Array.isArray(data.messages) ? data.messages : []);
-      }
+      if (res.ok) setMessages(Array.isArray(data.messages) ? data.messages : []);
     } catch {
       // quiet for MVP
     } finally {
@@ -642,7 +588,6 @@ export default function TextScreen({ route }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, contact?.id, baseUrl, authToken]);
 
-  // ✅ hide the web scrollbar for the chat list
   useEffect(() => {
     if (Platform.OS !== 'web') return;
 
@@ -680,7 +625,6 @@ export default function TextScreen({ route }) {
       });
 
       if (result.canceled) return;
-
       const asset = (result.assets || [])[0];
       if (!asset?.uri) return;
 
@@ -697,7 +641,6 @@ export default function TextScreen({ route }) {
     if (!asset?.uri || !baseUrl) throw new Error('Missing asset/baseUrl');
 
     const originalName = asset.fileName || `image-${Date.now()}${asset.uri.includes('.png') ? '.png' : '.jpg'}`;
-
     const timestamp = Date.now();
     const signatureBase64 = makeSignatureBase64({ timestamp, originalName });
 
@@ -725,9 +668,7 @@ export default function TextScreen({ route }) {
     });
 
     const startData = await startRes.json().catch(() => ({}));
-    if (!startRes.ok || !startData?.uploadId) {
-      throw new Error(startData?.error || 'upload-chunk-start failed');
-    }
+    if (!startRes.ok || !startData?.uploadId) throw new Error(startData?.error || 'upload-chunk-start failed');
 
     const uploadId = startData.uploadId;
 
@@ -738,18 +679,11 @@ export default function TextScreen({ route }) {
       const chunkRes = await fetch(`${baseUrl}/upload-chunk`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          uploadId,
-          chunkIndex: i,
-          chunkSha256,
-          chunkDataBase64,
-        }),
+        body: JSON.stringify({ uploadId, chunkIndex: i, chunkSha256, chunkDataBase64 }),
       });
 
       const chunkJson = await chunkRes.json().catch(() => ({}));
-      if (!chunkRes.ok) {
-        throw new Error(chunkJson?.error || `upload-chunk failed at ${i}`);
-      }
+      if (!chunkRes.ok) throw new Error(chunkJson?.error || `upload-chunk failed at ${i}`);
     }
 
     const doneRes = await fetch(`${baseUrl}/upload-chunk-complete`, {
@@ -802,10 +736,7 @@ export default function TextScreen({ route }) {
 
       const res = await fetch(`${baseUrl}/api/mobile/messages/send`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${authToken}`,
-        },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
         body: JSON.stringify({
           senderId: user.id,
           recipientId: contact.id,
@@ -841,8 +772,23 @@ export default function TextScreen({ route }) {
       <View style={styles.outerContainer}>
         <View style={styles.phoneFrame}>
           <View style={styles.container}>
+            {/* ✅ Top transparent title bar (under status bar) */}
+            <View style={[styles.topBar, { paddingTop: insets.top + 8 }]}>
+              <View style={styles.topBarRow}>
+                <Text style={styles.topBarTitle}>./fasbit</Text>
+
+                <TouchableOpacity
+                  style={styles.topBarMenuBtn}
+                  activeOpacity={0.85}
+                  onPress={() => console.log('[text] menu pressed')}
+                >
+                  <Ionicons name="menu" size={22} color="#E5E7EB" />
+                </TouchableOpacity>
+              </View>
+            </View>
+
             {/* Header: avatar + user_name */}
-            <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
+            <View style={[styles.header, { paddingTop: 8 }]}>
               <View style={styles.headerCard}>
                 <View style={styles.headerLeft}>
                   <View style={styles.headerAvatarWrap}>
@@ -882,10 +828,7 @@ export default function TextScreen({ route }) {
                   const imageUri = attachmentPath ? getPrivateMediaUrl(attachmentPath) : localUri || '';
 
                   const originalName =
-                    item.attachment_original_name ||
-                    item.attachmentOriginalName ||
-                    item.attachment_name ||
-                    null;
+                    item.attachment_original_name || item.attachmentOriginalName || item.attachment_name || null;
 
                   const mime = item.attachment_mime || item.attachmentMime || null;
 
@@ -923,7 +866,7 @@ export default function TextScreen({ route }) {
                 }}
               />
 
-              {/* ✅ Composer (2 lines: icons row + input row) */}
+              {/* ✅ Composer */}
               <View style={[styles.composerDock, { paddingBottom: Math.max(insets.bottom, 8) }]}>
                 {!!pendingAsset?.uri && (
                   <View style={styles.pendingRow}>
@@ -943,7 +886,6 @@ export default function TextScreen({ route }) {
                 )}
 
                 <View style={styles.composerCard}>
-                  {/* TOP LINE: icons + send */}
                   <View style={styles.composerTopRow}>
                     <View style={styles.composerIconRow}>
                       <TouchableOpacity
@@ -984,7 +926,6 @@ export default function TextScreen({ route }) {
                     </TouchableOpacity>
                   </View>
 
-                  {/* BOTTOM LINE: input (wraps + grows upward) */}
                   <View style={styles.inputRow}>
                     <TextInput
                       value={text}
@@ -1003,10 +944,8 @@ export default function TextScreen({ route }) {
                   </View>
                 </View>
               </View>
-              {/* /Composer */}
             </View>
 
-            {/* ✅ Fullscreen pinch-zoom viewer (replaces ImageViewing) */}
             <ZoomableImageModal
               visible={viewerVisible}
               uri={viewerUri}
@@ -1026,12 +965,7 @@ export default function TextScreen({ route }) {
             />
 
             {/* Forward picker */}
-            <Modal
-              visible={forwardVisible}
-              transparent
-              animationType="fade"
-              onRequestClose={() => setForwardVisible(false)}
-            >
+            <Modal visible={forwardVisible} transparent animationType="fade" onRequestClose={() => setForwardVisible(false)}>
               <View style={styles.forwardOverlay}>
                 <View style={[styles.forwardCard, { paddingBottom: Math.max(insets.bottom, 12) }]}>
                   <View style={styles.forwardHeader}>
@@ -1075,7 +1009,6 @@ export default function TextScreen({ route }) {
                 </View>
               </View>
             </Modal>
-            {/* /Forward picker */}
           </View>
         </View>
       </View>
@@ -1086,14 +1019,25 @@ export default function TextScreen({ route }) {
 const styles = StyleSheet.create({
   kav: { flex: 1 },
 
-  outerContainer: {
-    flex: 1,
-    backgroundColor: '#000000',
-    alignItems: 'center',
-    justifyContent: 'flex-start',
-    paddingVertical: 16,
-  },
+  // ✅ edge-to-edge dark blue on native; web keeps black around the "phone preview"
+  outerContainer: Platform.select({
+    web: {
+      flex: 1,
+      backgroundColor: '#000000',
+      alignItems: 'center',
+      justifyContent: 'flex-start',
+      paddingVertical: 16,
+    },
+    default: {
+      flex: 1,
+      backgroundColor: '#111827',
+      alignItems: 'stretch',
+      justifyContent: 'flex-start',
+      paddingVertical: 0,
+    },
+  }),
 
+  // ✅ was missing in your file
   phoneFrame: Platform.select({
     web: {
       width: '100%',
@@ -1109,12 +1053,35 @@ const styles = StyleSheet.create({
     default: {
       flex: 1,
       width: '100%',
-      maxWidth: MAX_WIDTH,
       backgroundColor: '#111827',
     },
   }),
 
   container: { flex: 1, width: '100%', backgroundColor: '#111827' },
+
+  // ✅ top transparent title bar
+  topBar: {
+    paddingHorizontal: 16,
+    paddingBottom: 6,
+    backgroundColor: 'transparent',
+  },
+  topBarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  topBarTitle: {
+    color: '#E5E7EB',
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  topBarMenuBtn: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'transparent',
+  },
 
   header: {
     paddingHorizontal: 16,
@@ -1179,16 +1146,8 @@ const styles = StyleSheet.create({
   theirs: { alignSelf: 'flex-start', backgroundColor: '#020617' },
   bubbleText: { color: '#FFF', fontSize: 14 },
 
-  attachmentPressable: {
-    borderRadius: 14,
-    overflow: 'hidden',
-  },
-  attachmentImg: {
-    width: 220,
-    height: 220,
-    borderRadius: 14,
-    backgroundColor: '#0B1220',
-  },
+  attachmentPressable: { borderRadius: 14, overflow: 'hidden' },
+  attachmentImg: { width: 220, height: 220, borderRadius: 14, backgroundColor: '#0B1220' },
 
   composerDock: { marginTop: 6 },
 
@@ -1204,12 +1163,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#0B1220',
     marginBottom: 6,
   },
-  pendingThumb: {
-    width: 28,
-    height: 28,
-    borderRadius: 7,
-    backgroundColor: '#020617',
-  },
+  pendingThumb: { width: 28, height: 28, borderRadius: 7, backgroundColor: '#020617' },
   pendingText: { flex: 1, color: '#D1D5DB', fontSize: 12 },
 
   composerCard: {
@@ -1226,11 +1180,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 6,
   },
-  composerIconRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
+  composerIconRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
 
   iconBtn: {
     width: 30,
@@ -1261,19 +1211,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
   },
-  input: {
-    color: '#FFF',
-    fontSize: 14,
-    padding: 0,
-    lineHeight: 18,
-  },
+  input: { color: '#FFF', fontSize: 14, padding: 0, lineHeight: 18 },
 
   chatList: Platform.select({
     web: { scrollbarWidth: 'none', msOverflowStyle: 'none' },
     default: {},
   }),
 
-  // Viewer header/footer (over ZoomableImageModal)
   viewerHeader: {
     position: 'absolute',
     top: 0,
@@ -1285,11 +1229,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  viewerHeaderActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
+  viewerHeaderActions: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   viewerHeaderBtn: {
     width: 38,
     height: 38,
@@ -1300,21 +1240,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.12)',
   },
-  viewerFooter: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    paddingHorizontal: 14,
-    paddingTop: 10,
-  },
-  viewerFooterText: {
-    color: '#E5E7EB',
-    fontSize: 12,
-    opacity: 0.9,
-  },
+  viewerFooter: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 14, paddingTop: 10 },
+  viewerFooterText: { color: '#E5E7EB', fontSize: 12, opacity: 0.9 },
 
-  // Forward modal
   forwardOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.6)',
@@ -1331,22 +1259,9 @@ const styles = StyleSheet.create({
     borderColor: '#1F2937',
     padding: 12,
   },
-  forwardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingBottom: 10,
-  },
-  forwardTitle: {
-    color: '#FFFFFF',
-    fontWeight: '900',
-    fontSize: 14,
-  },
-  forwardEmpty: {
-    color: '#9CA3AF',
-    paddingVertical: 14,
-    textAlign: 'center',
-  },
+  forwardHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 10 },
+  forwardTitle: { color: '#FFFFFF', fontWeight: '900', fontSize: 14 },
+  forwardEmpty: { color: '#9CA3AF', paddingVertical: 14, textAlign: 'center' },
   forwardRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1372,29 +1287,9 @@ const styles = StyleSheet.create({
   forwardAvatarTxt: { color: '#93C5FD', fontWeight: '900', fontSize: 11 },
   forwardRowTxt: { flex: 1, color: '#E5E7EB', fontWeight: '800' },
 
-  // Viewer modal base
-  viewerOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.95)',
-  },
-  viewerBackdrop: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  viewerImageWrap: {
-    width: '100%',
-    height: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  viewerImage: {
-    width: '100%',
-    height: '100%',
-  },
-  viewerImageTransformWrap: {
-    width: '100%',
-    height: '100%',
-  },
-
+  viewerOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.95)' },
+  viewerBackdrop: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  viewerImageWrap: { width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' },
+  viewerImage: { width: '100%', height: '100%' },
+  viewerImageTransformWrap: { width: '100%', height: '100%' },
 });

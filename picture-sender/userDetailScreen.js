@@ -25,6 +25,11 @@ import { useAuth } from './auth';
 
 const MAX_WIDTH = 300;
 
+// Web "6 inch" viewport approximation: browsers assume 96px/inch.
+const PHONE_HEIGHT_IN = 6;
+const CSS_PX_PER_IN = 96;
+const PHONE_HEIGHT_PX = PHONE_HEIGHT_IN * CSS_PX_PER_IN; // 576px
+
 function initialsFromUser(u) {
   const a = String(u?.first_name || '').trim();
   const b = String(u?.last_name || '').trim();
@@ -151,7 +156,7 @@ export default function UserDetailScreen({ navigation }) {
       const url = `${String(serverUrl).replace(/\/+$/, '')}/api/mobile/contacts/list`;
       const res = await fetch(url, {
         method: 'POST',
-        headers: getAuthHeaders(), // ✅ FIX 401
+        headers: getAuthHeaders(),
         body: JSON.stringify({ requesterId: user.id }),
       });
       const data = await res.json().catch(() => ({}));
@@ -187,7 +192,7 @@ export default function UserDetailScreen({ navigation }) {
       const url = `${String(serverUrl).replace(/\/+$/, '')}/api/mobile/contacts/search-any`;
       const res = await fetch(url, {
         method: 'POST',
-        headers: getAuthHeaders(), // ✅ FIX 401
+        headers: getAuthHeaders(),
         body: JSON.stringify({ requesterId: user.id, q }),
       });
       const data = await res.json().catch(() => ({}));
@@ -206,7 +211,7 @@ export default function UserDetailScreen({ navigation }) {
       const url = `${String(serverUrl).replace(/\/+$/, '')}/api/mobile/contacts/add`;
       const res = await fetch(url, {
         method: 'POST',
-        headers: getAuthHeaders(), // ✅ FIX 401
+        headers: getAuthHeaders(),
         body: JSON.stringify({ requesterId: user.id, contactUserId }),
       });
       if (res.ok) {
@@ -282,7 +287,6 @@ export default function UserDetailScreen({ navigation }) {
       const res = await fetch(url, {
         method: 'POST',
         body: form,
-        // ✅ include auth (once server enforces it)
         headers: authToken ? { Authorization: `Bearer ${authToken}` } : undefined,
         // DO NOT set Content-Type; boundary is automatic
       });
@@ -480,21 +484,29 @@ export default function UserDetailScreen({ navigation }) {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={keyboardOffset}
     >
+      {/* Outer page */}
       <View style={styles.outerContainer}>
-        <View style={styles.container}>
-          <FlatList
-            data={contacts}
-            keyExtractor={(item) => String(item.id)}
-            renderItem={renderContact}
-            ListHeaderComponent={ListHeader}
-            contentContainerStyle={{
-              padding: 16,
-              paddingBottom: Math.max(insets.bottom, 16),
-            }}
-            keyboardShouldPersistTaps="handled"
-            ListEmptyComponent={loadingContacts ? null : <Text style={styles.emptyText}>No contacts yet.</Text>}
-            showsVerticalScrollIndicator={false}
-          />
+        {/* ✅ Phone viewport wrapper (fixed 6" height on web only) */}
+        <View style={styles.phoneFrame}>
+          <View style={styles.container}>
+            <FlatList
+              data={contacts}
+              keyExtractor={(item) => String(item.id)}
+              renderItem={renderContact}
+              ListHeaderComponent={ListHeader}
+              contentContainerStyle={{
+                padding: 16,
+                paddingTop: insets.top + 16,
+                paddingBottom: Math.max(insets.bottom, 16),
+              }}
+              keyboardShouldPersistTaps="handled"
+              ListEmptyComponent={
+                loadingContacts ? null : <Text style={styles.emptyText}>No contacts yet.</Text>
+              }
+              // keep if you like the clean look; scrolling still works
+              showsVerticalScrollIndicator={false}
+            />
+          </View>
         </View>
       </View>
     </KeyboardAvoidingView>
@@ -502,15 +514,39 @@ export default function UserDetailScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
+  // page behind the “phone”
   outerContainer: {
     flex: 1,
     backgroundColor: '#000000',
     alignItems: 'center',
+    justifyContent: 'flex-start',
+    paddingVertical: 16,
   },
+
+  // ✅ 6-inch viewport limitation (web only)
+  phoneFrame: Platform.select({
+    web: {
+      width: '100%',
+      maxWidth: MAX_WIDTH,
+      height: PHONE_HEIGHT_PX, // ~6 inches
+      overflow: 'hidden', // FlatList scrolls inside
+      backgroundColor: '#111827',
+      borderRadius: 18,
+      borderWidth: 1,
+      borderColor: '#1F2937',
+      boxShadow: '0px 10px 30px rgba(0,0,0,0.45)',
+    },
+    default: {
+      flex: 1, // native uses real device height
+      width: '100%',
+      maxWidth: MAX_WIDTH,
+      backgroundColor: '#111827',
+    },
+  }),
+
   container: {
     flex: 1,
     width: '100%',
-    maxWidth: MAX_WIDTH,
     backgroundColor: '#111827',
   },
 
@@ -557,10 +593,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     overflow: 'hidden',
   },
-  bigAvatarImg: {
-    width: '100%',
-    height: '100%',
-  },
+  bigAvatarImg: { width: '100%', height: '100%' },
   bigAvatarInitials: {
     color: '#93C5FD',
     fontWeight: '900',
@@ -603,6 +636,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
   },
+
   searchResultsWrap: {
     marginTop: 12,
     borderTopWidth: 1,

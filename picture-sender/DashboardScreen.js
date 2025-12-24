@@ -1,20 +1,4 @@
 // DashboardScreen.js
-/* The purpose of this file is to provide a React Native component that
-represents the dashboard screen of an application. It includes various
-UI elements such as cards, text inputs, and buttons, and it also handles
-state management and data fetching using hooks like `useState` and
-`useEffect`. The component is designed to be responsive and adapt to
-different screen sizes, with a maximum width of 300 units. It also includes
-a custom hook `useAuth` for authentication purposes and a function
-`initialsFromUser` to generate initials from a user's first and last name.
-Additionally, it includes a function`resolveUploadUrl` to handle image URLs
-and a custom component `AuthImage` for displaying images with authentication
-headers. The main component `DashboardScreen` fetches user threads and
-displays them in a scrollable list, with options to search and navigate to 
-individual threads or contacts. It also includes a floating button for
-adding new contacts. */
-
-
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
@@ -45,86 +29,27 @@ function initialsFromUser(u) {
   return i || '@';
 }
 
-function resolveUploadUrl(serverUrl, path) {
+function cleanServerUrl(u) {
+  return String(u || '').replace(/\/+$/, '');
+}
+
+/**
+ * ✅ Use the SAME strategy as TextScreen:
+ * /api/mobile/media?path=...&token=...
+ * This works on native + web without Image headers.
+ */
+function resolvePrivateMediaUrl(serverUrl, authToken, path) {
   if (!serverUrl || !path) return null;
 
-  const base = String(serverUrl).replace(/\/+$/, '');
+  const base = cleanServerUrl(serverUrl);
   const raw = String(path).trim();
 
   if (/^https?:\/\//i.test(raw)) return raw;
 
   const clean = raw.replace(/^\/+/, '');
-  if (clean.startsWith('uploads/')) return `${base}/${clean}`;
-  return `${base}/uploads/${clean}`;
-}
-
-/**
- * AuthImage:
- * - Native: uses Image headers (Authorization)
- * - Web: fetches blob with Authorization and renders an object URL
- */
-function AuthImage({ uri, authToken, style, fallback }) {
-  const [webObjectUrl, setWebObjectUrl] = useState(null);
-  const [failed, setFailed] = useState(false);
-
-  useEffect(() => {
-    setFailed(false);
-
-    if (Platform.OS !== 'web') return;
-    if (!uri || !authToken) {
-      setWebObjectUrl(null);
-      return;
-    }
-
-    let alive = true;
-    let createdUrl = null;
-
-    (async () => {
-      try {
-        const res = await fetch(uri, {
-          headers: { Authorization: `Bearer ${authToken}` },
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-        const blob = await res.blob();
-        createdUrl = URL.createObjectURL(blob);
-
-        if (!alive) {
-          URL.revokeObjectURL(createdUrl);
-          return;
-        }
-        setWebObjectUrl(createdUrl);
-      } catch {
-        if (alive) {
-          setFailed(true);
-          setWebObjectUrl(null);
-        }
-      }
-    })();
-
-    return () => {
-      alive = false;
-      if (createdUrl) URL.revokeObjectURL(createdUrl);
-    };
-  }, [uri, authToken]);
-
-  if (!uri || failed) return fallback || null;
-
-  if (Platform.OS === 'web') {
-    if (!webObjectUrl) return fallback || null;
-    return <Image source={{ uri: webObjectUrl }} style={style} />;
-  }
-
-  return (
-    <Image
-      source={{
-        uri,
-        headers: authToken ? { Authorization: `Bearer ${authToken}` } : undefined,
-      }}
-      style={style}
-      onError={() => setFailed(true)}
-    />
-  );
+  return `${base}/api/mobile/media?path=${encodeURIComponent(clean)}&token=${encodeURIComponent(
+    authToken || ''
+  )}`;
 }
 
 export default function DashboardScreen({ navigation }) {
@@ -135,14 +60,15 @@ export default function DashboardScreen({ navigation }) {
   const [loadingThreads, setLoadingThreads] = useState(false);
   const [searchText, setSearchText] = useState('');
 
-  const avatarUrl = useMemo(() => {
-    if (!serverUrl || !user?.id) return null;
-    const base = String(serverUrl).replace(/\/+$/, '');
-    return `${base}/media/avatar/${user.id}`;
-  }, [serverUrl, user?.id]);
-
   // user_name is REQUIRED (never fallback to email here)
   const handle = useMemo(() => String(user?.user_name || '').trim(), [user?.user_name]);
+
+  // ✅ User avatar: prefer avatar_path via private endpoint (consistent with TextScreen)
+  const avatarUrl = useMemo(() => {
+    const p = String(user?.avatar_path || '').trim();
+    if (p) return resolvePrivateMediaUrl(serverUrl, authToken, p);
+    return null;
+  }, [serverUrl, authToken, user?.avatar_path]);
 
   const keyboardOffset = Platform.OS === 'ios' ? insets.top + 64 : 0;
 
@@ -151,7 +77,7 @@ export default function DashboardScreen({ navigation }) {
 
     setLoadingThreads(true);
     try {
-      const url = `${String(serverUrl).replace(/\/+$/, '')}/api/mobile/messages/threads`;
+      const url = `${cleanServerUrl(serverUrl)}/api/mobile/messages/threads`;
 
       const res = await fetch(url, {
         method: 'POST',
@@ -173,9 +99,7 @@ export default function DashboardScreen({ navigation }) {
       }
 
       const list = Array.isArray(data?.threads) ? data.threads : [];
-      list.sort(
-        (a, b) => Number(b?.last?.sent_date || 0) - Number(a?.last?.sent_date || 0)
-      );
+      list.sort((a, b) => Number(b?.last?.sent_date || 0) - Number(a?.last?.sent_date || 0));
       setThreads(list);
     } catch (e) {
       console.warn('[dashboard] threads error', String(e?.message || e));
@@ -203,8 +127,9 @@ export default function DashboardScreen({ navigation }) {
 
     return threads.filter((t) => {
       const contact = t?.contact || {};
-      const name = `${contact.user_name || ''} ${contact.first_name || ''} ${contact.last_name || ''} ${contact.email || ''}`
-        .toLowerCase();
+      const name = `${contact.user_name || ''} ${contact.first_name || ''} ${contact.last_name || ''} ${
+        contact.email || ''
+      }`.toLowerCase();
       const last = `${t?.last?.content || ''}`.toLowerCase();
       return name.includes(q) || last.includes(q);
     });
@@ -227,12 +152,28 @@ export default function DashboardScreen({ navigation }) {
         {/* Phone viewport (fixed height on web, full height on native) */}
         <View style={styles.phoneFrame}>
           <View style={styles.container}>
+            {/* ✅ Transparent top bar under system status bar */}
+            <View style={[styles.topBar, { paddingTop: insets.top + 8 }]}>
+              <View style={styles.topBarRow}>
+                <Text style={styles.topBarTitle}>./fasbit</Text>
+
+                <TouchableOpacity
+                  style={styles.topBarMenuBtn}
+                  activeOpacity={0.85}
+                  onPress={() => console.log('[dashboard] menu pressed')}
+                >
+                  <Ionicons name="menu" size={22} color="#E5E7EB" />
+                </TouchableOpacity>
+              </View>
+            </View>
+
             <ScrollView
               style={styles.scroll}
               contentContainerStyle={[
                 styles.content,
                 {
-                  paddingTop: insets.top + 16,
+                  // ✅ topBar owns the safe-area now
+                  paddingTop: 12,
                   paddingBottom: Math.max(insets.bottom, 80),
                 },
               ]}
@@ -248,26 +189,14 @@ export default function DashboardScreen({ navigation }) {
                   <View style={styles.welcomeTextCol}>
                     <Text style={styles.welcomeTitle}>Welcome</Text>
 
-                    <Text
-                      style={[styles.handleText, !handle && styles.missingHandle]}
-                      numberOfLines={1}
-                    >
+                    <Text style={[styles.handleText, !handle && styles.missingHandle]} numberOfLines={1}>
                       {handle || 'MISSING USERNAME'}
                     </Text>
                   </View>
 
                   <View style={styles.avatarWrap}>
                     {avatarUrl ? (
-                      <AuthImage
-                        uri={avatarUrl}
-                        authToken={authToken}
-                        style={styles.avatarImg}
-                        fallback={
-                          <Text style={styles.avatarInitials}>
-                            {initialsFromUser(user)}
-                          </Text>
-                        }
-                      />
+                      <Image source={{ uri: avatarUrl }} style={styles.avatarImg} />
                     ) : (
                       <Text style={styles.avatarInitials}>{initialsFromUser(user)}</Text>
                     )}
@@ -290,12 +219,7 @@ export default function DashboardScreen({ navigation }) {
               {/* 3) Search messages */}
               <View style={styles.searchCard}>
                 <View style={styles.searchInputWrapper}>
-                  <Ionicons
-                    name="search"
-                    size={18}
-                    color="#9CA3AF"
-                    style={styles.searchIcon}
-                  />
+                  <Ionicons name="search" size={18} color="#9CA3AF" style={styles.searchIcon} />
                   <TextInput
                     value={searchText}
                     onChangeText={setSearchText}
@@ -314,9 +238,7 @@ export default function DashboardScreen({ navigation }) {
                 {loadingThreads && filteredThreads.length === 0 ? (
                   <Text style={styles.emptyText}>Loading…</Text>
                 ) : filteredThreads.length === 0 ? (
-                  <Text style={styles.emptyText}>
-                    {searchText.trim() ? 'No matches.' : 'No threads yet.'}
-                  </Text>
+                  <Text style={styles.emptyText}>{searchText.trim() ? 'No matches.' : 'No threads yet.'}</Text>
                 ) : (
                   filteredThreads.map((t, idx) => {
                     const c = t?.contact || {};
@@ -326,7 +248,9 @@ export default function DashboardScreen({ navigation }) {
                       c?.email ||
                       'Contact';
 
-                    const cAvatarUrl = resolveUploadUrl(serverUrl, c?.avatar_path);
+                    // ✅ FIX: use private media endpoint like TextScreen
+                    const cAvatarUrl = resolvePrivateMediaUrl(serverUrl, authToken, c?.avatar_path);
+
                     const preview = String(t?.last?.content || '').trim();
 
                     return (
@@ -338,20 +262,9 @@ export default function DashboardScreen({ navigation }) {
                       >
                         <View style={styles.threadAvatarWrap}>
                           {cAvatarUrl ? (
-                            <AuthImage
-                              uri={cAvatarUrl}
-                              authToken={authToken}
-                              style={styles.threadAvatarImg}
-                              fallback={
-                                <Text style={styles.threadAvatarInitials}>
-                                  {initialsFromUser(c)}
-                                </Text>
-                              }
-                            />
+                            <Image source={{ uri: cAvatarUrl }} style={styles.threadAvatarImg} />
                           ) : (
-                            <Text style={styles.threadAvatarInitials}>
-                              {initialsFromUser(c)}
-                            </Text>
+                            <Text style={styles.threadAvatarInitials}>{initialsFromUser(c)}</Text>
                           )}
                         </View>
 
@@ -372,7 +285,7 @@ export default function DashboardScreen({ navigation }) {
               </View>
             </ScrollView>
 
-            {/* Floating "+" button (stays inside the phone viewport) */}
+            {/* Floating "+" button */}
             <TouchableOpacity
               style={[styles.floatingButton, { bottom: insets.bottom + 20 }]}
               onPress={() => navigation.navigate('Contacts')}
@@ -388,22 +301,31 @@ export default function DashboardScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  // whole page behind the “phone”
-  outerContainer: {
-    flex: 1,
-    backgroundColor: '#000000',
-    alignItems: 'center',
-    justifyContent: 'flex-start',
-    paddingVertical: 16,
-  },
+  // ✅ edge-to-edge dark blue on native; web keeps black around the "phone preview"
+  outerContainer: Platform.select({
+    web: {
+      flex: 1,
+      backgroundColor: '#000000',
+      alignItems: 'center',
+      justifyContent: 'flex-start',
+      paddingVertical: 16,
+    },
+    default: {
+      flex: 1,
+      backgroundColor: '#111827',
+      alignItems: 'stretch',
+      justifyContent: 'flex-start',
+      paddingVertical: 0,
+    },
+  }),
 
-  // ✅ this is the “6 inch screen” limit (web only)
+  // ✅ web preview stays 300px wide; native becomes full width
   phoneFrame: Platform.select({
     web: {
       width: '100%',
       maxWidth: MAX_WIDTH,
-      height: PHONE_HEIGHT_PX, // ~6 inches
-      overflow: 'hidden', // content scrolls inside ScrollView
+      height: PHONE_HEIGHT_PX,
+      overflow: 'hidden',
       backgroundColor: '#111827',
       borderRadius: 18,
       borderWidth: 1,
@@ -411,9 +333,8 @@ const styles = StyleSheet.create({
       boxShadow: '0px 10px 30px rgba(0,0,0,0.45)',
     },
     default: {
-      flex: 1, // native uses the real phone height
+      flex: 1,
       width: '100%',
-      maxWidth: MAX_WIDTH,
       backgroundColor: '#111827',
     },
   }),
@@ -424,7 +345,30 @@ const styles = StyleSheet.create({
     backgroundColor: '#111827',
   },
 
-  // important: ScrollView must be constrained by the phoneFrame height
+  // ✅ Transparent title bar
+  topBar: {
+    paddingHorizontal: 16,
+    paddingBottom: 6,
+    backgroundColor: 'transparent',
+  },
+  topBarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  topBarTitle: {
+    color: '#E5E7EB',
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  topBarMenuBtn: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'transparent',
+  },
+
   scroll: { flex: 1 },
 
   content: {

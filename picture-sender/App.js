@@ -8,22 +8,25 @@ import {
   Alert,
   TouchableOpacity,
   ScrollView,
+  Platform,
 } from 'react-native';
-import { NavigationContainer } from '@react-navigation/native';
+
+import {
+  NavigationContainer,
+  createNavigationContainerRef,
+} from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as SplashScreen from 'expo-splash-screen';
 
 import { AuthProvider, useAuth } from './auth';
-import {
-  AdminProvider,
-  useAdmin,
-  AdminModal,
-} from './admin';
+import { AdminProvider, useAdmin, AdminModal } from './admin';
 import { uploadPhotosWithController } from './controller';
 import { CLIENT_ID, SECRET_KEY_BASE64 } from './config';
+
 import LoginScreen from './LoginScreen';
 import SignupScreen from './SignupScreen';
 import DashboardScreen from './DashboardScreen';
@@ -34,11 +37,13 @@ import TextScreen from './TextScreen';
 import UserDetailScreen from './userDetailScreen';
 import AccountInfoScreen from './AccountInfoScreen';
 import AvatarScreen from './AvatarScreen';
+import SettingsScreen from './SettingsScreen';
 
 // Keep the native splash visible until we explicitly hide it
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
 const Stack = createNativeStackNavigator();
+const navigationRef = createNavigationContainerRef();
 
 // MainScreen (photo upload functionality)
 function PhotoUploadScreen() {
@@ -180,10 +185,7 @@ function PhotoUploadScreen() {
           <Ionicons name="settings-sharp" size={24} color="#9CA3AF" />
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={styles.logoutButton}
-          onPress={handleLogout}
-        >
+        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
           <Ionicons name="log-out-outline" size={24} color="#9CA3AF" />
         </TouchableOpacity>
       </View>
@@ -215,10 +217,7 @@ function PhotoUploadScreen() {
 
       {/* Bottom small buttons */}
       <View style={styles.bottomRow}>
-        <TouchableOpacity
-          style={styles.smallButton}
-          onPress={pickImages}
-        >
+        <TouchableOpacity style={styles.smallButton} onPress={pickImages}>
           <Text style={styles.smallButtonText}>Pick Photo(s)</Text>
         </TouchableOpacity>
 
@@ -248,10 +247,7 @@ function PhotoUploadScreen() {
         Server: {serverUrl || '(not set – tap gear)'}
       </Text>
 
-      <AdminModal
-        visible={adminVisible}
-        onClose={() => setAdminVisible(false)}
-      />
+      <AdminModal visible={adminVisible} onClose={() => setAdminVisible(false)} />
     </View>
   );
 }
@@ -285,13 +281,9 @@ function GalleryTab({ gallery }) {
   return (
     <ScrollView contentContainerStyle={styles.galleryScroll}>
       <View style={styles.galleryGrid}>
-        {gallery.map(item => (
+        {gallery.map((item) => (
           <View key={item.id} style={styles.thumbWrapper}>
-            <Image
-              source={{ uri: item.uri }}
-              style={styles.thumbImage}
-              resizeMode="cover"
-            />
+            <Image source={{ uri: item.uri }} style={styles.thumbImage} resizeMode="cover" />
             <View
               style={[
                 styles.statusDot,
@@ -309,9 +301,7 @@ function GalleryTab({ gallery }) {
 function AppNavigator() {
   const { user, loading } = useAuth();
 
-  if (loading) {
-    return null; // Could add a splash screen here
-  }
+  if (loading) return null;
 
   return (
     <Stack.Navigator
@@ -323,6 +313,8 @@ function AppNavigator() {
       {user ? (
         <>
           <Stack.Screen name="Dashboard" component={DashboardScreen} />
+          <Stack.Screen name="Settings" component={SettingsScreen} />
+
           <Stack.Screen name="PhotoUpload" component={PhotoUploadScreen} />
           <Stack.Screen name="Contacts" component={ContactScreen} />
           <Stack.Screen name="ContactDetail" component={ContactDetailScreen} />
@@ -331,7 +323,6 @@ function AppNavigator() {
           <Stack.Screen name="UserDetail" component={UserDetailScreen} />
           <Stack.Screen name="AccountInfo" component={AccountInfoScreen} />
           <Stack.Screen name="Avatar" component={AvatarScreen} />
-          
         </>
       ) : (
         <>
@@ -347,13 +338,12 @@ function AppNavigator() {
 export default function App() {
   const [ready, setReady] = useState(false);
 
+  // Keep splash up for ~2 seconds
   useEffect(() => {
     let mounted = true;
 
     (async () => {
-      // Hold splash for ~2 seconds (add your startup work here if you want)
       await new Promise((r) => setTimeout(r, 2000));
-
       if (!mounted) return;
 
       setReady(true);
@@ -365,14 +355,44 @@ export default function App() {
     };
   }, []);
 
-  // While not ready, render nothing (splash stays up)
+  // Web-only: ArrowLeft = goBack (for testing/navigation)
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    if (typeof window === 'undefined' || typeof document === 'undefined') return;
+
+    const isEditable = (el) => {
+      if (!el) return false;
+      const tag = String(el.tagName || '').toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || tag === 'select') return true;
+      if (el.isContentEditable) return true;
+      const role = String(el.getAttribute?.('role') || '').toLowerCase();
+      return role === 'textbox';
+    };
+
+    const onKeyDown = (e) => {
+      if (!e || e.defaultPrevented) return;
+      if (e.key !== 'ArrowLeft') return;
+      if (e.altKey || e.ctrlKey || e.metaKey) return;
+
+      if (isEditable(document.activeElement)) return;
+      if (!navigationRef?.isReady?.()) return;
+      if (!navigationRef.canGoBack()) return;
+
+      e.preventDefault();
+      navigationRef.goBack();
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
+
   if (!ready) return null;
 
   return (
     <SafeAreaProvider>
       <AuthProvider>
         <AdminProvider>
-          <NavigationContainer>
+          <NavigationContainer ref={navigationRef}>
             <AppNavigator />
           </NavigationContainer>
         </AdminProvider>
@@ -398,12 +418,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 20,
   },
-  gearButton: {
-    padding: 8,
-  },
-  logoutButton: {
-    padding: 8,
-  },
+  gearButton: { padding: 8 },
+  logoutButton: { padding: 8 },
   title: {
     color: 'white',
     fontSize: 24,

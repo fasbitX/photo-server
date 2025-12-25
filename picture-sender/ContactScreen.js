@@ -15,7 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from './auth';
 
-const MAX_WIDTH = 288; // 4 inches at ~72 DPI
+const MAX_WIDTH = 300; // 4 inches at ~72 DPI
 
 function safeServerBase(serverUrl) {
   return String(serverUrl || '').replace(/\/+$/, '');
@@ -305,73 +305,48 @@ export default function ContactScreen({ navigation }) {
         </View>
 
         <View style={styles.searchCard}>
-          <View style={styles.searchHeaderRow}>
-            <Text style={styles.label}>Search</Text>
-            {searching ? (
-              <View style={styles.searchingPill}>
-                <ActivityIndicator size="small" />
-                <Text style={styles.searchingText}>Searching…</Text>
-              </View>
-            ) : (
-              <Text style={styles.hintText}>
-                {canSearch ? 'Showing matches' : `Type ${MIN_CHARS}+ characters`}
-              </Text>
-            )}
-          </View>
+          <View style={styles.searchInputWrapper}>
+            <Ionicons name="search" size={18} color="#9CA3AF" style={styles.searchIcon} />
 
-          <View style={styles.searchRow}>
-            <Ionicons name="search" size={16} color="#9CA3AF" style={styles.searchIcon} />
             <TextInput
-              style={styles.input}
-              placeholder="Phone, email, or username"
-              placeholderTextColor="#6B7280"
-              autoCapitalize="none"
-              autoCorrect={false}
               value={value}
               onChangeText={onChangeSearch}
-              onSubmitEditing={() => doLiveSearch(value)}
+              placeholder="Search for Contacts"
+              placeholderTextColor="#9CA3AF"
+              style={styles.searchInput}
+              autoCorrect={false}
+              autoCapitalize="none"
               returnKeyType="search"
+              onSubmitEditing={() => doLiveSearch(value)}
               keyboardType={normalizePhone(value).length > 0 ? 'phone-pad' : 'default'}
             />
-            {!!value && (
-              <TouchableOpacity
-                onPress={() => {
-                  onChangeSearch('');
-                  setResults([]);
-                  setMode('saved');
-                }}
-                style={styles.clearBtn}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                <Ionicons name="close-circle" size={18} color="#9CA3AF" />
-              </TouchableOpacity>
-            )}
-          </View>
 
-          <View style={styles.modeRow}>
-            <TouchableOpacity
-              style={[styles.modeChip, mode === 'saved' && styles.modeChipActive]}
-              onPress={() => setMode('saved')}
-            >
-              <Text style={[styles.modeChipText, mode === 'saved' && styles.modeChipTextActive]}>
-                Saved
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.modeChip, mode === 'search' && styles.modeChipActive]}
-              onPress={() => setMode('search')}
-            >
-              <Text style={[styles.modeChipText, mode === 'search' && styles.modeChipTextActive]}>
-                Results
-              </Text>
-            </TouchableOpacity>
+            <View style={styles.rightAccessory}>
+              {searching ? (
+                <ActivityIndicator size="small" />
+              ) : (
+                !!value && (
+                  <TouchableOpacity
+                    onPress={() => {
+                      // hard clear (no debounce lag)
+                      setValue('');
+                      stopInFlightSearch();
+                      if (debounceTimerRef.current) {
+                        clearTimeout(debounceTimerRef.current);
+                        debounceTimerRef.current = null;
+                      }
+                      setSearching(false);
+                      setResults([]);
+                      setMode('saved');
+                    }}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Ionicons name="close-circle" size={18} color="#9CA3AF" />
+                  </TouchableOpacity>
+                )
+              )}
+            </View>
           </View>
-
-          <Text style={styles.help}>
-            • Phone: punctuation ignored (802-555-2222 matches 8025552222){'\n'}
-            • Username: "@" ignored{'\n'}
-            • Email: "@" ignored
-          </Text>
         </View>
 
         {mode === 'saved' ? (
@@ -408,33 +383,139 @@ export default function ContactScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  outerContainer: { flex: 1, backgroundColor: '#000000', alignItems: 'center' },
-  container: { flex: 1, width: '100%', maxWidth: MAX_WIDTH, backgroundColor: '#111827' },
-  header: { height: 64, paddingHorizontal: 16, backgroundColor: '#020617', borderBottomWidth: 1, borderBottomColor: '#1F2937', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  headerBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  headerTitle: { color: '#FFFFFF', fontSize: 18, fontWeight: '700' },
-  searchCard: { margin: 16, padding: 16, backgroundColor: '#020617', borderRadius: 12, borderWidth: 1, borderColor: '#1F2937' },
-  searchHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
-  label: { color: '#9CA3AF', fontSize: 12, fontWeight: '700' },
-  hintText: { color: '#6B7280', fontSize: 11 },
-  searchingPill: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  searchingText: { color: '#9CA3AF', fontSize: 11 },
-  searchRow: { position: 'relative', width: '100%', flexDirection: 'row', alignItems: 'center' },
-  searchIcon: { position: 'absolute', left: 14, zIndex: 2 },
-  input: { flex: 1, minWidth: 0, width: '100%', height: 44, borderRadius: 12, paddingLeft: 38, paddingRight: 38, backgroundColor: '#0B1220', borderWidth: 1, borderColor: '#1F2937', color: '#FFFFFF' },
-  clearBtn: { position: 'absolute', right: 12, height: 44, justifyContent: 'center', alignItems: 'center' },
-  modeRow: { flexDirection: 'row', gap: 8, marginTop: 12 },
-  modeChip: { flex: 1, paddingVertical: 10, borderRadius: 999, backgroundColor: '#111827', borderWidth: 1, borderColor: '#1F2937', alignItems: 'center' },
-  modeChipActive: { backgroundColor: '#10B981', borderColor: '#10B981' },
-  modeChipText: { color: '#9CA3AF', fontWeight: '800' },
-  modeChipTextActive: { color: '#FFFFFF' },
-  help: { color: '#6B7280', fontSize: 11, marginTop: 10, lineHeight: 16 },
-  row: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 16, marginBottom: 12, padding: 14, borderRadius: 12, backgroundColor: '#020617', borderWidth: 1, borderColor: '#1F2937', gap: 12 },
-  rowTitle: { color: '#FFFFFF', fontSize: 16, fontWeight: '800' },
-  rowSub: { color: '#9CA3AF', marginTop: 2 },
-  rowMeta: { color: '#6B7280', marginTop: 6, fontSize: 12 },
-  rowBtn: { width: 40, height: 40, borderRadius: 12, backgroundColor: '#2563EB', alignItems: 'center', justifyContent: 'center' },
-  rowBtnDanger: { width: 40, height: 40, borderRadius: 12, backgroundColor: '#111827', borderWidth: 1, borderColor: '#7F1D1D', alignItems: 'center', justifyContent: 'center' },
-  center: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
-  centerText: { color: '#9CA3AF', marginTop: 10, textAlign: 'center' },
+  outerContainer: {
+    flex: 1,
+    backgroundColor: '#000000',
+    alignItems: 'center',
+  },
+
+  container: {
+    flex: 1,
+    width: '100%',
+    maxWidth: MAX_WIDTH,
+    backgroundColor: '#111827',
+  },
+
+  header: {
+    height: 64,
+    paddingHorizontal: 16,
+    backgroundColor: '#020617',
+    borderBottomWidth: 1,
+    borderBottomColor: '#1F2937',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+
+  headerBtn: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  headerTitle: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '700',
+  },
+
+  searchCard: {
+    marginHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 12,
+    paddingHorizontal: 0,
+  },
+
+  searchInputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#0B1220',
+    borderWidth: 1,
+    borderColor: '#1F2937',
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+
+  searchIcon: {
+    marginRight: 8,
+  },
+
+  searchInput: {
+    flex: 1,
+    minWidth: 0,
+    color: '#FFFFFF',
+    fontSize: 14,
+    padding: 0,
+  },
+
+  rightAccessory: {
+    width: 26,
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+  },
+
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 16,
+    marginBottom: 12,
+    padding: 14,
+    borderRadius: 12,
+    backgroundColor: '#020617',
+    borderWidth: 1,
+    borderColor: '#1F2937',
+    gap: 12,
+  },
+
+  rowTitle: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '800',
+  },
+
+  rowSub: {
+    color: '#9CA3AF',
+    marginTop: 2,
+  },
+
+  rowMeta: {
+    color: '#6B7280',
+    marginTop: 6,
+    fontSize: 12,
+  },
+
+  rowBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: '#2563EB',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  rowBtnDanger: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: '#111827',
+    borderWidth: 1,
+    borderColor: '#7F1D1D',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  center: {
+    flexGrow: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+
+  centerText: {
+    color: '#9CA3AF',
+    marginTop: 10,
+    textAlign: 'center',
+  },
 });

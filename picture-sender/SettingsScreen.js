@@ -57,7 +57,7 @@ export default function SettingsScreen({ navigation }) {
           {/* Top header */}
           <View style={[styles.topBar, { paddingTop: insets.top + 8 }]}>
             <View style={styles.topBarRow}>
-              <Text style={styles.topBarTitle}>.'/fasbit</Text>
+              <Text style={styles.topBarTitle}>./fasbit</Text>
 
               {/* no hamburger here (we are on hamburger page) */}
               <View style={styles.topBarMenuBtn} />

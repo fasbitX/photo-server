@@ -160,7 +160,7 @@ export default function DashboardScreen({ navigation }) {
                 <TouchableOpacity
                   style={styles.topBarMenuBtn}
                   activeOpacity={0.85}
-                  onPress={() => console.log('[dashboard] menu pressed')}
+                  onPress={() => navigation.navigate('Settings')}
                 >
                   <Ionicons name="menu" size={22} color="#E5E7EB" />
                 </TouchableOpacity>
@@ -287,11 +287,11 @@ export default function DashboardScreen({ navigation }) {
 
             {/* Floating "+" button */}
             <TouchableOpacity
-              style={[styles.floatingButton, { bottom: insets.bottom + 20 }]}
+              style={[styles.floatingButton, { bottom: insets.bottom + 20 }]}  // 20px from bottom safe area
               onPress={() => navigation.navigate('Contacts')}
-              activeOpacity={0.85}
+              activeOpacity={0.85} 
             >
-              <Ionicons name="add" size={28} color="#FFFFFF" />
+              <Ionicons name="add" size={22} color="#FFFFFF" /> 
             </TouchableOpacity>
           </View>
         </View>
@@ -530,8 +530,8 @@ const styles = StyleSheet.create({
   floatingButton: {
     position: 'absolute',
     right: 20,
-    width: 56,
-    height: 56,
+    width: 45,
+    height: 45,
     borderRadius: 999,
     backgroundColor: '#2563EB',
     alignItems: 'center',

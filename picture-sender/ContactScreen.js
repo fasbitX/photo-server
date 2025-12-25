@@ -13,9 +13,15 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from './auth';
 
-const MAX_WIDTH = 300; // 4 inches at ~72 DPI
+const MAX_WIDTH = 300;
+
+// Web "6 inch" viewport approximation: CSS assumes 96px per inch.
+const PHONE_HEIGHT_IN = 6;
+const CSS_PX_PER_IN = 96;
+const PHONE_HEIGHT_PX = PHONE_HEIGHT_IN * CSS_PX_PER_IN; // 576px
 
 function safeServerBase(serverUrl) {
   return String(serverUrl || '').replace(/\/+$/, '');
@@ -23,16 +29,15 @@ function safeServerBase(serverUrl) {
 
 async function postJson(url, body, signal, authToken) {
   const headers = { 'Content-Type': 'application/json' };
-  if (authToken) {
-    headers['Authorization'] = `Bearer ${authToken}`;
-  }
-  
+  if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+
   const res = await fetch(url, {
     method: 'POST',
     headers,
     body: JSON.stringify(body || {}),
     signal,
   });
+
   const text = await res.text();
   let json = null;
   try {
@@ -40,6 +45,7 @@ async function postJson(url, body, signal, authToken) {
   } catch {
     json = null;
   }
+
   if (!res.ok) {
     const msg = json && json.error ? json.error : `HTTP ${res.status}`;
     throw new Error(msg);
@@ -59,40 +65,25 @@ function normalizeNoAt(raw) {
     .replace(/\s+/g, '');
 }
 
+// ✅ Ensures exactly ONE @ (your DB already stores @ sometimes)
+function formatHandle(userName) {
+  const s = String(userName || '').trim();
+  if (!s) return '';
+  return s.startsWith('@') ? s : `@${s}`;
+}
+
 export default function ContactScreen({ navigation }) {
   const { user, authToken, serverUrl } = useAuth();
+  const insets = useSafeAreaInsets();
 
-  // Saved list vs live-search results list
   const [mode, setMode] = useState('saved'); // 'saved' | 'search'
-
   const [value, setValue] = useState('');
   const [saved, setSaved] = useState([]);
   const [results, setResults] = useState([]);
-
   const [loadingSaved, setLoadingSaved] = useState(false);
   const [searching, setSearching] = useState(false);
 
   const base = safeServerBase(serverUrl);
-
-  const notify = (title, message) => {
-    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.alert) {
-      window.alert(`${title}: ${message}`);
-      return;
-    }
-    Alert.alert(title, message);
-  };
-
-  const confirmDialog = (title, message) => {
-    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.confirm) {
-      return Promise.resolve(window.confirm(`${title}\n\n${message}`));
-    }
-    return new Promise((resolve) => {
-      Alert.alert(title, message, [
-        { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
-        { text: 'OK', style: 'destructive', onPress: () => resolve(true) },
-      ]);
-    });
-  };
 
   const MIN_CHARS = 3;
   const DEBOUNCE_MS = 300;
@@ -119,10 +110,7 @@ export default function ContactScreen({ navigation }) {
       );
       setSaved(Array.isArray(data?.contacts) ? data.contacts : []);
     } catch (err) {
-      Alert.alert(
-        'Contacts',
-        `Failed to load saved contacts: ${String(err.message || err)}`
-      );
+      Alert.alert('Contacts', `Failed to load saved contacts: ${String(err.message || err)}`);
     } finally {
       setLoadingSaved(false);
     }
@@ -187,10 +175,12 @@ export default function ContactScreen({ navigation }) {
 
   const onChangeSearch = (text) => {
     setValue(text);
+
     if (debounceTimerRef.current) {
       clearTimeout(debounceTimerRef.current);
       debounceTimerRef.current = null;
     }
+
     debounceTimerRef.current = setTimeout(() => {
       doLiveSearch(text);
     }, DEBOUNCE_MS);
@@ -221,30 +211,6 @@ export default function ContactScreen({ navigation }) {
     }
   };
 
-  const remove = async (contactUserId, contactLabel = 'Contact') => {
-    if (!base || !user?.id || !authToken) return;
-
-    const ok = await confirmDialog(
-      'Remove contact',
-      `Remove ${contactLabel} from your saved list?`
-    );
-    if (!ok) return;
-
-    try {
-      await postJson(
-        `${base}/api/mobile/contacts/remove`,
-        { requesterId: user.id, contactUserId },
-        null,
-        authToken
-      );
-      await loadSaved();
-      setMode('saved');
-      notify('Removed', `${contactLabel} removed from saved list.`);
-    } catch (err) {
-      notify('Remove contact', `Failed: ${String(err.message || err)}`);
-    }
-  };
-
   const openContact = (contact, isSaved) => {
     if (!contact) return;
     navigation.navigate('ContactDetail', { contact, isSaved: !!isSaved });
@@ -254,34 +220,45 @@ export default function ContactScreen({ navigation }) {
     const name =
       (item.nickname && String(item.nickname).trim()) ||
       `${item.first_name || ''} ${item.last_name || ''}`.trim() ||
-      item.user_name ||
+      (item.user_name ? String(item.user_name).replace(/^@/, '') : '') ||
       'User';
 
-    const subtitle = item.user_name ? `@${item.user_name}` : item.email || item.phone || '';
+    // ✅ Fix double @@
+    const subtitle = item.user_name ? formatHandle(item.user_name) : item.email || item.phone || '';
 
     return (
-      <TouchableOpacity style={styles.row} activeOpacity={0.9} onPress={() => openContact(item, savedMode)}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.rowTitle}>{name}</Text>
-          {!!subtitle && <Text style={styles.rowSub}>{subtitle}</Text>}
-          {item.email || item.phone ? (
-            <Text style={styles.rowMeta}>
-              {item.email ? item.email : ''}
-              {item.email && item.phone ? ' • ' : ''}
-              {item.phone ? item.phone : ''}
+      <TouchableOpacity
+        style={styles.row}
+        activeOpacity={0.9}
+        onPress={() => openContact(item, savedMode)}
+      >
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={styles.rowTitle} numberOfLines={1}>
+            {name}
+          </Text>
+
+          {!!subtitle && (
+            <Text style={styles.rowSub} numberOfLines={1}>
+              {subtitle}
             </Text>
-          ) : null}
+          )}
+
         </View>
 
+        {/* ✅ Remove trash from list; delete happens in Detail */}
         {savedMode ? (
-          <TouchableOpacity
-            style={styles.rowBtnDanger}
-            onPress={() => remove(item.id, name)}
-          >
-            <Ionicons name="trash-outline" size={18} color="#DC2626" />
-          </TouchableOpacity>
+          <Ionicons name="chevron-forward" size={18} color="#6B7280" />
         ) : (
-          <TouchableOpacity style={styles.rowBtn} onPress={() => add(item)}>
+          <TouchableOpacity
+            style={styles.rowBtn}
+            onPress={(e) => {
+              // Prevent opening detail when clicking add (works on web; harmless on native)
+              e?.stopPropagation?.();
+              add(item);
+            }}
+            activeOpacity={0.9}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
             <Ionicons name="person-add-outline" size={18} color="#FFFFFF" />
           </TouchableOpacity>
         )}
@@ -289,140 +266,209 @@ export default function ContactScreen({ navigation }) {
     );
   };
 
-  return (
-    <View style={styles.outerContainer}>
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <TouchableOpacity
-            onPress={() => navigation.goBack()}
-            style={styles.headerBtn}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            <Ionicons name="arrow-back" size={22} color="#E5E7EB" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Contacts</Text>
-          <View style={styles.headerBtn} />
-        </View>
+  const ListHeader = (
+    <View>
+      <Text style={styles.screenTitle}>Contacts</Text>
 
-        <View style={styles.searchCard}>
-          <View style={styles.searchInputWrapper}>
-            <Ionicons name="search" size={18} color="#9CA3AF" style={styles.searchIcon} />
+      <View style={styles.searchCard}>
+        <View style={styles.searchInputWrapper}>
+          <Ionicons name="search" size={18} color="#9CA3AF" style={styles.searchIcon} />
 
-            <TextInput
-              value={value}
-              onChangeText={onChangeSearch}
-              placeholder="Search for Contacts"
-              placeholderTextColor="#9CA3AF"
-              style={styles.searchInput}
-              autoCorrect={false}
-              autoCapitalize="none"
-              returnKeyType="search"
-              onSubmitEditing={() => doLiveSearch(value)}
-              keyboardType={normalizePhone(value).length > 0 ? 'phone-pad' : 'default'}
-            />
+          <TextInput
+            value={value}
+            onChangeText={onChangeSearch}
+            placeholder="Search for New Contacts"
+            placeholderTextColor="#9CA3AF"
+            style={styles.searchInput}
+            autoCorrect={false}
+            autoCapitalize="none"
+            returnKeyType="search"
+            onSubmitEditing={() => doLiveSearch(value)}
+            keyboardType={normalizePhone(value).length > 0 ? 'phone-pad' : 'default'}
+          />
 
-            <View style={styles.rightAccessory}>
-              {searching ? (
-                <ActivityIndicator size="small" />
-              ) : (
-                !!value && (
-                  <TouchableOpacity
-                    onPress={() => {
-                      // hard clear (no debounce lag)
-                      setValue('');
-                      stopInFlightSearch();
-                      if (debounceTimerRef.current) {
-                        clearTimeout(debounceTimerRef.current);
-                        debounceTimerRef.current = null;
-                      }
-                      setSearching(false);
-                      setResults([]);
-                      setMode('saved');
-                    }}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  >
-                    <Ionicons name="close-circle" size={18} color="#9CA3AF" />
-                  </TouchableOpacity>
-                )
-              )}
-            </View>
+          <View style={styles.rightAccessory}>
+            {searching ? (
+              <ActivityIndicator size="small" />
+            ) : (
+              !!value && (
+                <TouchableOpacity
+                  onPress={() => {
+                    setValue('');
+                    stopInFlightSearch();
+
+                    if (debounceTimerRef.current) {
+                      clearTimeout(debounceTimerRef.current);
+                      debounceTimerRef.current = null;
+                    }
+
+                    setSearching(false);
+                    setResults([]);
+                    setMode('saved');
+                  }}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  activeOpacity={0.9}
+                >
+                  <Ionicons name="close-circle" size={18} color="#9CA3AF" />
+                </TouchableOpacity>
+              )
+            )}
           </View>
         </View>
+      </View>
+    </View>
+  );
 
-        {mode === 'saved' ? (
-          loadingSaved ? (
-            <View style={styles.center}>
-              <ActivityIndicator />
-              <Text style={styles.centerText}>Loading saved contacts…</Text>
+  const listPaddingBottom = Math.max(insets.bottom, 18);
+
+  return (
+    <View style={styles.outerContainer}>
+      <View style={styles.phoneFrame}>
+        <View style={styles.container}>
+          {/* ✅ Universal top bar */}
+          <View style={[styles.topBar, { paddingTop: insets.top + 8 }]}>
+            <View style={styles.topBarRow}>
+              <Text style={styles.topBarTitle}>./fasbit</Text>
+
+              <TouchableOpacity
+                style={styles.topBarMenuBtn}
+                activeOpacity={0.85}
+                onPress={() => navigation.navigate('Settings')}
+              >
+                <Ionicons name="menu" size={22} color="#E5E7EB" />
+              </TouchableOpacity>
             </View>
+          </View>
+
+          {mode === 'saved' ? (
+            loadingSaved ? (
+              <View style={styles.center}>
+                <ActivityIndicator />
+                <Text style={styles.centerText}>Loading saved contacts…</Text>
+              </View>
+            ) : (
+              <FlatList
+                data={saved}
+                keyExtractor={(item) => String(item.id)}
+                ListHeaderComponent={ListHeader}
+                contentContainerStyle={
+                  saved.length
+                    ? [styles.listContent, { paddingBottom: listPaddingBottom }]
+                    : [styles.listContent, styles.center, { paddingBottom: listPaddingBottom }]
+                }
+                ListEmptyComponent={<Text style={styles.centerText}>No saved contacts yet.</Text>}
+                renderItem={({ item }) => renderRow({ item, savedMode: true })}
+                keyboardShouldPersistTaps="handled"
+              />
+            )
           ) : (
             <FlatList
-              data={saved}
+              data={results}
               keyExtractor={(item) => String(item.id)}
-              contentContainerStyle={saved.length ? null : styles.center}
-              ListEmptyComponent={<Text style={styles.centerText}>No saved contacts yet.</Text>}
-              renderItem={({ item }) => renderRow({ item, savedMode: true })}
+              ListHeaderComponent={ListHeader}
+              contentContainerStyle={
+                results.length
+                  ? [styles.listContent, { paddingBottom: listPaddingBottom }]
+                  : [styles.listContent, styles.center, { paddingBottom: listPaddingBottom }]
+              }
+              ListEmptyComponent={
+                <Text style={styles.centerText}>
+                  {canSearch ? 'No results.' : `Type ${MIN_CHARS}+ characters to search.`}
+                </Text>
+              }
+              renderItem={({ item }) => renderRow({ item, savedMode: false })}
+              keyboardShouldPersistTaps="handled"
             />
-          )
-        ) : (
-          <FlatList
-            data={results}
-            keyExtractor={(item) => String(item.id)}
-            contentContainerStyle={results.length ? null : styles.center}
-            ListEmptyComponent={
-              <Text style={styles.centerText}>
-                {canSearch ? 'No results.' : `Type ${MIN_CHARS}+ characters to search.`}
-              </Text>
-            }
-            renderItem={({ item }) => renderRow({ item, savedMode: false })}
-          />
-        )}
+          )}
+        </View>
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  outerContainer: {
-    flex: 1,
-    backgroundColor: '#000000',
-    alignItems: 'center',
-  },
+  outerContainer: Platform.select({
+    web: {
+      flex: 1,
+      backgroundColor: '#000000',
+      alignItems: 'center',
+      justifyContent: 'flex-start',
+      paddingVertical: 16,
+    },
+    default: {
+      flex: 1,
+      backgroundColor: '#111827',
+      alignItems: 'stretch',
+      justifyContent: 'flex-start',
+      paddingVertical: 0,
+    },
+  }),
+
+  phoneFrame: Platform.select({
+    web: {
+      width: '100%',
+      maxWidth: MAX_WIDTH,
+      height: PHONE_HEIGHT_PX,
+      overflow: 'hidden',
+      backgroundColor: '#111827',
+      borderRadius: 18,
+      borderWidth: 1,
+      borderColor: '#1F2937',
+      boxShadow: '0px 10px 30px rgba(0,0,0,0.45)',
+    },
+    default: {
+      flex: 1,
+      width: '100%',
+      backgroundColor: '#111827',
+    },
+  }),
 
   container: {
     flex: 1,
     width: '100%',
-    maxWidth: MAX_WIDTH,
     backgroundColor: '#111827',
   },
 
-  header: {
-    height: 64,
+  topBar: {
     paddingHorizontal: 16,
-    backgroundColor: '#020617',
-    borderBottomWidth: 1,
-    borderBottomColor: '#1F2937',
+    paddingBottom: 6,
+    backgroundColor: 'transparent',
+  },
+
+  topBarRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
 
-  headerBtn: {
+  topBarTitle: {
+    color: '#E5E7EB',
+    fontSize: 16,
+    fontWeight: '800',
+  },
+
+  topBarMenuBtn: {
     width: 40,
     height: 40,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: 'transparent',
   },
 
-  headerTitle: {
-    color: '#FFFFFF',
+  listContent: {
+    padding: 16,
+    paddingTop: 12,
+  },
+
+  screenTitle: {
+    color: '#E5E7EB',
     fontSize: 18,
-    fontWeight: '700',
+    fontWeight: '800',
+    marginBottom: 10,
   },
 
   searchCard: {
-    marginHorizontal: 16,
-    marginTop: 12,
+    marginTop: 0,
     marginBottom: 12,
     paddingHorizontal: 0,
   },
@@ -459,7 +505,6 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginHorizontal: 16,
     marginBottom: 12,
     padding: 14,
     borderRadius: 12,
@@ -495,22 +540,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
-  rowBtnDanger: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: '#111827',
-    borderWidth: 1,
-    borderColor: '#7F1D1D',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
   center: {
     flexGrow: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 24,
   },
 
   centerText: {

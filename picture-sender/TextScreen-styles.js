@@ -282,4 +282,12 @@ export const styles = StyleSheet.create({
   viewerImageWrap: { width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' },
   viewerImage: { width: '100%', height: '100%' },
   viewerImageTransformWrap: { width: '100%', height: '100%' },
+
+    dollarIconText: {
+    color: '#9CA3AF',
+    fontSize: 16,
+    fontWeight: '900',
+    lineHeight: 16,
+    },
+
 });

@@ -4,7 +4,6 @@
 // for initializing the database, hashing passwords, generating tokens, 
 // creating and managing users, handling password resets, and performing transactions.
 
-
 const { Pool } = require('pg');
 const crypto = require('crypto');
 
@@ -86,15 +85,38 @@ function initDatabase() {
       await client.query(`CREATE INDEX IF NOT EXISTS idx_users_user_name ON users(user_name)`);
       await client.query(`CREATE INDEX IF NOT EXISTS idx_users_auth_token ON users(auth_token)`);
 
-      // Create transactions table
+     // Create transfers table (global ledger of sends)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS transfers (
+        id SERIAL PRIMARY KEY,
+        sender_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        recipient_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        amount DECIMAL(10, 2) NOT NULL,
+        note TEXT,
+        created_at BIGINT NOT NULL
+      )
+    `);
+
+    // Add linkage columns to transactions for transfer grouping + admin audit
+    await client.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS transfer_id INTEGER REFERENCES transfers(id) ON DELETE SET NULL`);
+    await client.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS counterparty_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL`);
+    await client.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS direction VARCHAR(10)`);
+
+    // Helpful indexes
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_transfers_created_at ON transfers(created_at DESC)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_transfers_sender ON transfers(sender_id)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_transfers_recipient ON transfers(recipient_id)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_transactions_transfer_id ON transactions(transfer_id)`);
+
+      // Create transfers table (global ledger of sends)
       await client.query(`
-        CREATE TABLE IF NOT EXISTS transactions (
+        CREATE TABLE IF NOT EXISTS transfers (
           id SERIAL PRIMARY KEY,
-          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          sender_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          recipient_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
           amount DECIMAL(10, 2) NOT NULL,
-          description TEXT,
-          running_balance DECIMAL(10, 2) NOT NULL,
-          transaction_date BIGINT NOT NULL
+          note TEXT,
+          created_at BIGINT NOT NULL
         )
       `);
 
@@ -570,6 +592,112 @@ async function getTransactions(userId, limit = 50) {
   );
   return result.rows;
 }
+
+async function createTransfer({ senderId, recipientId, amount, note = null }) {
+  const sid = Number(senderId);
+  const rid = Number(recipientId);
+
+  if (!sid || !rid) throw new Error('Missing sender/recipient');
+  if (sid === rid) throw new Error('Cannot transfer to yourself');
+
+  const amt = Number(amount);
+  if (!Number.isFinite(amt) || amt <= 0) throw new Error('Invalid amount');
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Lock rows in stable order to avoid deadlocks
+    const a = Math.min(sid, rid);
+    const b = Math.max(sid, rid);
+
+    const usersRes = await client.query(
+      `SELECT id, user_name, account_balance
+       FROM users
+       WHERE id IN ($1, $2)
+       FOR UPDATE`,
+      [a, b]
+    );
+
+    if (usersRes.rows.length !== 2) throw new Error('User not found');
+
+    const senderRow = usersRes.rows.find(r => Number(r.id) === sid);
+    const recipRow  = usersRes.rows.find(r => Number(r.id) === rid);
+    if (!senderRow || !recipRow) throw new Error('User not found');
+
+    const senderBal = Number(senderRow.account_balance);
+    const recipBal  = Number(recipRow.account_balance);
+
+    if (!Number.isFinite(senderBal) || senderBal < amt) throw new Error('Insufficient balance');
+
+    const newSenderBal = senderBal - amt;
+    const newRecipBal  = recipBal + amt;
+
+    const now = Date.now();
+
+    // Insert global transfer record
+    const tRes = await client.query(
+      `INSERT INTO transfers (sender_id, recipient_id, amount, note, created_at)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id`,
+      [sid, rid, amt, note, now]
+    );
+    const transferId = tRes.rows[0].id;
+
+    // Update balances
+    await client.query(
+      `UPDATE users SET account_balance = $1, last_modified = $2 WHERE id = $3`,
+      [newSenderBal, now, sid]
+    );
+    await client.query(
+      `UPDATE users SET account_balance = $1, last_modified = $2 WHERE id = $3`,
+      [newRecipBal, now, rid]
+    );
+
+    // Insert per-user transaction rows
+    const senderHandle = senderRow.user_name ? String(senderRow.user_name) : '';
+    const recipHandle  = recipRow.user_name ? String(recipRow.user_name) : '';
+
+    await client.query(
+      `INSERT INTO transactions (user_id, amount, description, running_balance, transaction_date, transfer_id, counterparty_user_id, direction)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'debit')`,
+      [
+        sid,
+        -amt,
+        `Transfer to ${recipHandle || 'recipient'}`,
+        newSenderBal,
+        now,
+        transferId,
+        rid,
+      ]
+    );
+
+    await client.query(
+      `INSERT INTO transactions (user_id, amount, description, running_balance, transaction_date, transfer_id, counterparty_user_id, direction)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'credit')`,
+      [
+        rid,
+        +amt,
+        `Transfer from ${senderHandle || 'sender'}`,
+        newRecipBal,
+        now,
+        transferId,
+        sid,
+      ]
+    );
+
+    await client.query('COMMIT');
+
+    // Ecosystem invariant: sender -amt, recipient +amt => total unchanged.
+    return { transferId, senderNewBalance: newSenderBal, recipientNewBalance: newRecipBal };
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 
 /* ──────────────────────────────────────────────
  *  LOGIN SESSION TRACKING

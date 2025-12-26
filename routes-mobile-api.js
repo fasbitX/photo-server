@@ -20,6 +20,7 @@ const {
   listThreads,
   getThreadMessages,
   markThreadRead,
+  createTransfer,
   } = require('./database');
 const {
   sendVerificationEmail,
@@ -350,6 +351,32 @@ function registerMobileApiRoutes(app) {
       res.status(500).json({ error: 'Failed to update user' });
     }
   });
+  
+  /* ──────────────────────────────────────────────
+ *  TRANSFERS (MOBILE) - AUTHENTICATED
+ * ────────────────────────────────────────────── */
+
+  app.post('/api/mobile/transfers/send', requireMobileAuth, async (req, res) => {
+    try {
+      const { recipientId, amount, note } = req.body || {};
+
+      if (!recipientId) return res.status(400).json({ error: 'Missing recipientId' });
+      if (amount == null) return res.status(400).json({ error: 'Missing amount' });
+
+      const out = await createTransfer({
+        senderId: req.user.id,
+        recipientId,
+        amount,
+        note: note ? String(note).trim() : null,
+      });
+
+      res.json(out);
+    } catch (err) {
+      console.error('transfers/send error:', err);
+      res.status(400).json({ error: String(err.message || 'Transfer failed') });
+    }
+  });
+
 
   /* ──────────────────────────────────────────────
    *  CONTACTS (MOBILE) - ALL AUTHENTICATED

@@ -5,6 +5,7 @@ const path = require('path');
 const archiver = require('archiver');
 const nodemailer = require('nodemailer');
 const { renderAdminLayout } = require('./admin-layout');
+const { Pool } = require('pg');
 
 const uploadDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadDir)) {
@@ -15,6 +16,20 @@ if (!fs.existsSync(uploadDir)) {
 const assetsDir = path.join(__dirname, 'assets', 'icons');
 if (!fs.existsSync(assetsDir)) {
   fs.mkdirSync(assetsDir, { recursive: true });
+}
+
+let _pool;
+function getPool() {
+  if (!_pool) {
+    _pool = new Pool({
+      host: process.env.DB_HOST || 'localhost',
+      port: process.env.DB_PORT || 5432,
+      database: process.env.DB_NAME || 'text_fasbit',
+      user: process.env.DB_USER || 'text_fasbit_user',
+      password: process.env.DB_PASSWORD,
+    });
+  }
+  return _pool;
 }
 
 /* ════════════════════════════════════════════════════════
@@ -668,6 +683,99 @@ function registerAdminRoutes(app, { requireAdmin, state }) {
       });
     }
   });
+
+  // Admin transactions page
+app.get('/admin/transactions', requireAdmin, async (req, res) => {
+  try {
+    const pool = getPool();
+    const { rows } = await pool.query(
+      `
+      SELECT
+        t.id,
+        t.created_at,
+        t.amount,
+        su.user_name AS sender_user_name,
+        su.email     AS sender_email,
+        ru.user_name AS recipient_user_name,
+        ru.email     AS recipient_email
+      FROM transfers t
+      JOIN users su ON su.id = t.sender_id
+      JOIN users ru ON ru.id = t.recipient_id
+      ORDER BY t.created_at DESC, t.id DESC
+      LIMIT 500
+      `
+    );
+
+    const content = `
+      <style>
+        .tx-card {
+          background:#030712;
+          border:1px solid #1f2937;
+          border-radius:12px;
+          padding:16px;
+        }
+        .tx-title { font-size:28px; font-weight:800; margin-bottom:6px; }
+        .tx-sub { color:#9ca3af; font-size:14px; margin-bottom:16px; }
+        table { width:100%; border-collapse: collapse; overflow:hidden; border-radius:10px; }
+        th, td { padding:12px 12px; border-bottom:1px solid #1f2937; text-align:left; font-size:13px; }
+        th { color:#9ca3af; font-weight:800; text-transform:uppercase; letter-spacing:0.6px; background:#020617; }
+        td { color:#e5e7eb; }
+        .amt { font-weight:800; }
+        .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+      </style>
+
+      <div class="content-header">
+        <h2 class="content-title">Transactions</h2>
+        <p class="content-subtitle">Global transfer ledger (last 500)</p>
+      </div>
+
+      <div class="tx-card">
+        ${rows.length === 0 ? `
+          <div style="color:#9ca3af; padding:18px;">No transfers yet.</div>
+        ` : `
+          <table>
+            <thead>
+              <tr>
+                <th>Transaction #</th>
+                <th>Date</th>
+                <th>Who sent</th>
+                <th>Who received</th>
+                <th>Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rows.map(r => {
+                const when = new Date(Number(r.created_at)).toLocaleString();
+                const sender = (r.sender_user_name || r.sender_email || 'Sender');
+                const recip  = (r.recipient_user_name || r.recipient_email || 'Recipient');
+                const amt = Number(r.amount || 0).toFixed(2);
+                return `
+                  <tr>
+                    <td class="mono">${r.id}</td>
+                    <td>${when}</td>
+                    <td>${sender}</td>
+                    <td>${recip}</td>
+                    <td class="amt">$${amt}</td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        `}
+      </div>
+    `;
+
+    res.send(renderAdminLayout({
+      title: 'Transactions - Admin',
+      content,
+      activeMenu: 'transactions-list',
+    }));
+  } catch (err) {
+    console.error('Admin transactions error:', err);
+    res.status(500).send('Error loading transactions');
+  }
+});
+
 }
 
 module.exports = { registerAdminRoutes };

@@ -1,4 +1,5 @@
 // App.js
+
 import React, { useState, useEffect } from 'react';
 import {
   StyleSheet,
@@ -38,6 +39,7 @@ import UserDetailScreen from './userDetailScreen';
 import AccountInfoScreen from './AccountInfoScreen';
 import AvatarScreen from './AvatarScreen';
 import SettingsScreen from './SettingsScreen';
+import Send$Screen from './Send$Screen';
 
 // Keep the native splash visible until we explicitly hide it
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -314,7 +316,6 @@ function AppNavigator() {
         <>
           <Stack.Screen name="Dashboard" component={DashboardScreen} />
           <Stack.Screen name="Settings" component={SettingsScreen} />
-
           <Stack.Screen name="PhotoUpload" component={PhotoUploadScreen} />
           <Stack.Screen name="Contacts" component={ContactScreen} />
           <Stack.Screen name="ContactDetail" component={ContactDetailScreen} />
@@ -323,6 +324,8 @@ function AppNavigator() {
           <Stack.Screen name="UserDetail" component={UserDetailScreen} />
           <Stack.Screen name="AccountInfo" component={AccountInfoScreen} />
           <Stack.Screen name="Avatar" component={AvatarScreen} />
+          <Stack.Screen name="Send$" component={Send$Screen} />
+
         </>
       ) : (
         <>

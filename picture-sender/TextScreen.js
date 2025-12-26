@@ -1,5 +1,5 @@
 // TextScreen.js
-import React, { useEffect, useRef, useState, useMemo } from 'react';
+import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -18,6 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import * as MediaLibrary from 'expo-media-library';
 import * as Sharing from 'expo-sharing';
+import { useFocusEffect } from '@react-navigation/native';
 
 import { useAuth } from './auth';
 import { useAdmin } from './admin';
@@ -38,7 +39,7 @@ import {
   resolvePrivateMediaUrl,
 } from './TextScreen-helpers';
 
-export default function TextScreen({ route }) {
+export default function TextScreen({ route, navigation }) {
   const { contact } = route.params || {};
   const { user, authToken, serverUrl } = useAuth();
   const { settings, logInfo, logError } = useAdmin();
@@ -93,7 +94,11 @@ export default function TextScreen({ route }) {
   const openViewer = ({ uri, attachmentPath, originalName, mime }) => {
     if (!uri) return;
     setViewerUri(uri);
-    setViewerMeta({ attachmentPath: attachmentPath || null, originalName: originalName || null, mime: mime || null });
+    setViewerMeta({
+      attachmentPath: attachmentPath || null,
+      originalName: originalName || null,
+      mime: mime || null,
+    });
     setViewerVisible(true);
   };
 
@@ -211,16 +216,25 @@ export default function TextScreen({ route }) {
     }
   };
 
-  const fetchThread = async () => {
+  // TextScreen.js
+
+  const fetchThread = async (opts = {}) => {
+    const { showLoading = false } = opts;
+
     if (busyRef.current) return;
     if (!user?.id || !contact?.id || !baseUrl || !authToken) return;
 
-    setLoading(true);
+    busyRef.current = true;
+    if (showLoading) setLoading(true);
+
     try {
       const url = `${baseUrl}/api/mobile/messages/thread`;
       const res = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${authToken}`,
+        },
         body: JSON.stringify({ contactUserId: contact.id, limit: 50 }),
       });
 
@@ -229,42 +243,63 @@ export default function TextScreen({ route }) {
     } catch {
       // quiet for MVP
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
+      busyRef.current = false;
     }
   };
 
-  useEffect(() => {
-    fetchThread();
+  // ✅ Fixed: Depend on primitive values directly, not on memoized function
+  useFocusEffect(
+    useCallback(() => {
+      // kill any previous interval (prevents duplicates)
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
 
-    timerRef.current = setInterval(() => {
-      if (busyRef.current) return;
-      fetchThread();
-    }, 2500);
+      // initial fetch (with spinner)
+      fetchThread({ showLoading: true });
 
-    return () => timerRef.current && clearInterval(timerRef.current);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id, contact?.id, baseUrl, authToken]);
+      // background poll (silent)
+      timerRef.current = setInterval(() => {
+        fetchThread({ showLoading: false });
+      }, 2500);
+
+      // cleanup on blur/unfocus
+      return () => {
+        if (timerRef.current) {
+          clearInterval(timerRef.current);
+          timerRef.current = null;
+        }
+      };
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [user?.id, contact?.id, baseUrl, authToken])
+  );
 
   useEffect(() => {
     if (Platform.OS !== 'web') return;
 
-    const styleId = 'hide-chat-scrollbar';
-    if (document.getElementById(styleId)) return;
+    const originalAddEventListener = EventTarget.prototype.addEventListener;
+    
+    EventTarget.prototype.addEventListener = function (type, listener, options) {
+      if (type === 'wheel' || type === 'mousewheel' || type === 'touchstart' || type === 'touchmove') {
+        // Make wheel/touch events passive by default
+        if (typeof options === 'object' && options !== null) {
+          options.passive = options.passive !== false; // passive unless explicitly false
+        } else if (typeof options === 'boolean') {
+          // Convert boolean to object with passive
+          options = { capture: options, passive: true };
+        } else {
+          options = { passive: true };
+        }
+      }
+      return originalAddEventListener.call(this, type, listener, options);
+    };
 
-    const style = document.createElement('style');
-    style.id = styleId;
-    style.innerHTML = `
-      #chatScroll {
-        scrollbar-width: none;
-        -ms-overflow-style: none;
-      }
-      #chatScroll::-webkit-scrollbar {
-        width: 0px;
-        height: 0px;
-        display: none;
-      }
-    `;
-    document.head.appendChild(style);
+    // Cleanup on unmount
+    return () => {
+      EventTarget.prototype.addEventListener = originalAddEventListener;
+    };
   }, []);
 
   const pickAttachment = async () => {
@@ -293,6 +328,14 @@ export default function TextScreen({ route }) {
 
   const cameraStub = () => Alert.alert('Camera', 'Coming soon (stub).');
   const emojiStub = () => Alert.alert('Emoji', 'Coming soon (stub).');
+
+  const goSendDollar = () => {
+    try {
+      navigation.navigate('Send$');
+    } catch {
+      Alert.alert('Navigation', 'Route "Send$" is not registered yet.');
+    }
+  };
 
   const uploadAssetChunked = async (asset) => {
     if (!asset?.uri || !baseUrl) throw new Error('Missing asset/baseUrl');
@@ -409,11 +452,11 @@ export default function TextScreen({ route }) {
       if (!res.ok) throw new Error(data?.error || `send failed (${res.status})`);
 
       setPendingAsset(null);
-      await fetchThread();
+      await fetchThread({ showLoading: false });
     } catch (e) {
       logError?.('[chat] send failed', { error: String(e) });
       Alert.alert('Send failed', String(e?.message || e));
-      await fetchThread();
+      await fetchThread({ showLoading: false });
     } finally {
       setUploading(false);
       busyRef.current = false;
@@ -434,10 +477,11 @@ export default function TextScreen({ route }) {
               <View style={styles.topBarRow}>
                 <Text style={styles.topBarTitle}>./fasbit</Text>
 
+                {/* ✅ hamburger -> Settings */}
                 <TouchableOpacity
                   style={styles.topBarMenuBtn}
                   activeOpacity={0.85}
-                  onPress={() => console.log('[text] menu pressed')}
+                  onPress={() => navigation.navigate('Settings')}
                 >
                   <Ionicons name="menu" size={22} color="#E5E7EB" />
                 </TouchableOpacity>
@@ -570,6 +614,23 @@ export default function TextScreen({ route }) {
                         disabled={uploading}
                       >
                         <Ionicons name="happy-outline" size={16} color="#9CA3AF" />
+                      </TouchableOpacity>
+
+                      {/* ✅ $ icon -> Send$ */}
+                      <TouchableOpacity
+                        style={styles.iconBtn}
+                        onPress={goSendDollar}
+                        activeOpacity={0.85}
+                        disabled={uploading}
+                      >
+                        <Text
+                          style={[
+                            styles.dollarIconText, // ok if exists
+                            { color: '#9CA3AF', fontSize: 16, fontWeight: '900', lineHeight: 16 },
+                          ]}
+                        >
+                          $
+                        </Text>
                       </TouchableOpacity>
                     </View>
 

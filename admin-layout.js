@@ -79,7 +79,16 @@ function renderMenu(activeMenu = '') {
         { id: 'photos-folders', label: 'Manage Folders', href: '/admin/folders' },
         { id: 'photos-upload', label: 'Upload Photos', href: '/admin/upload' },
       ]
+    },
+    {
+      id: 'transactions',
+      label: 'Transactions',
+      icon: '💸',
+      children: [
+        { id: 'transactions-list', label: 'All Transactions', href: '/admin/transactions' },
+      ]
     }
+
   ];
 
   return menus.map(menu => {

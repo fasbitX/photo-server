@@ -329,13 +329,37 @@ export default function TextScreen({ route, navigation }) {
   const cameraStub = () => Alert.alert('Camera', 'Coming soon (stub).');
   const emojiStub = () => Alert.alert('Emoji', 'Coming soon (stub).');
 
-  const goSendDollar = () => {
-    try {
-      navigation.navigate('Send$');
-    } catch {
-      Alert.alert('Navigation', 'Route "Send$" is not registered yet.');
+  const goSendDollar = useCallback(() => {
+    // In TextScreen, "contact" is the person you're chatting with.
+    const recipient = contact;
+
+    console.log('💸 $ pressed', { recipientId: recipient?.id, user_name: recipient?.user_name });
+
+    if (!recipient?.id) {
+      Alert.alert('Send$', 'No recipient found for this thread.');
+      return;
     }
-  };
+
+    const params = {
+      recipient,               // full object (preferred)
+      recipientId: recipient.id, // fallback
+      from: 'TextScreen',
+    };
+
+    // Route-name fallback: some stacks register "Send$" vs "Send$Screen"
+    try {
+      navigation.navigate('Send$', params);
+      return;
+    } catch (e1) {
+      try {
+        navigation.navigate('Send$Screen', params);
+        return;
+      } catch (e2) {
+        console.error('Navigation to Send$ failed:', e1, e2);
+        Alert.alert('Navigation', 'Send$ route is not registered in the navigator.');
+      }
+    }
+  }, [navigation, contact]);
 
   const uploadAssetChunked = async (asset) => {
     if (!asset?.uri || !baseUrl) throw new Error('Missing asset/baseUrl');

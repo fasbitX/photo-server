@@ -40,6 +40,8 @@ import AccountInfoScreen from './AccountInfoScreen';
 import AvatarScreen from './AvatarScreen';
 import SettingsScreen from './SettingsScreen';
 import Send$Screen from './Send$Screen';
+import Send$Summary from './Send$Summary';
+
 
 // Keep the native splash visible until we explicitly hide it
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -325,6 +327,7 @@ function AppNavigator() {
           <Stack.Screen name="AccountInfo" component={AccountInfoScreen} />
           <Stack.Screen name="Avatar" component={AvatarScreen} />
           <Stack.Screen name="Send$" component={Send$Screen} />
+          <Stack.Screen name="Send$Summary" component={Send$Summary} />
 
         </>
       ) : (

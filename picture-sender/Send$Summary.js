@@ -1,5 +1,5 @@
 // Send$Summary.js
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   Alert,
   ActivityIndicator,
   Platform,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -22,6 +23,25 @@ const PHONE_HEIGHT_PX = PHONE_HEIGHT_IN * CSS_PX_PER_IN; // 576px
 
 function safeServerBase(serverUrl) {
   return String(serverUrl || '').replace(/\/+$/, '');
+}
+
+/**
+ * ✅ Private media URL (token in query) so <Image> can load protected uploads.
+ * - If `path` is already http(s), returns as-is.
+ * - If missing base/token/path, returns ''.
+ */
+function resolvePrivateMediaUrl(serverBase, authToken, pathLike) {
+  const base = safeServerBase(serverBase);
+  const token = String(authToken || '').trim();
+  const raw = String(pathLike || '').trim();
+
+  if (!raw) return '';
+  if (/^https?:\/\//i.test(raw)) return raw;
+
+  if (!base || !token) return '';
+
+  const cleanPath = raw.replace(/^\/+/, '');
+  return `${base}/api/mobile/media?path=${encodeURIComponent(cleanPath)}&token=${encodeURIComponent(token)}`;
 }
 
 async function postJson(url, body, authToken) {
@@ -57,34 +77,74 @@ function formatHandle(userName) {
 
 function displayNameFromUser(u) {
   return (
+    (u?.nickname && String(u.nickname).trim()) ||
     `${u?.first_name || ''} ${u?.last_name || ''}`.trim() ||
     (u?.user_name ? String(u.user_name).replace(/^@/, '') : '') ||
     'User'
   );
 }
 
+function initialsFromUser(u) {
+  const first = String(u?.first_name || '').trim();
+  const last = String(u?.last_name || '').trim();
+  const handle = String(u?.user_name || '').replace(/^@/, '').trim();
+
+  const a = (first[0] || handle[0] || 'U').toUpperCase();
+  const b = (last[0] || handle[1] || '').toUpperCase();
+  return `${a}${b}`.trim();
+}
+
+const nf = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 function dollars(n) {
   const x = Number(n);
-  if (!Number.isFinite(x)) return '$0.00';
-  return `$${x.toFixed(2)}`;
+  if (!Number.isFinite(x)) return '$ 0.00';
+  return `$ ${nf.format(x)}`;
 }
 
 export default function Send$Summary({ navigation, route }) {
   const insets = useSafeAreaInsets();
   const { user, authToken, serverUrl } = useAuth();
-
   const base = safeServerBase(serverUrl);
+
+  // ✅ hide scrollbars on web
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const id = 'fasbit-hide-scrollbars';
+    if (document.getElementById(id)) return;
+
+    const style = document.createElement('style');
+    style.id = id;
+    style.textContent = `
+      .fasbit-no-scrollbar::-webkit-scrollbar { width: 0px; height: 0px; }
+      .fasbit-no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+    `;
+    document.head.appendChild(style);
+  }, []);
 
   const recipient = route?.params?.recipient || null;
   const amount = Number(route?.params?.amount || 0);
   const senderBalance = Number(route?.params?.senderBalance || user?.account_balance || 0);
   const projectedBalance = Number(route?.params?.projectedBalance || (senderBalance - amount));
 
-  const [busy, setBusy] = useState(false);
+  // ✅ FIX: use private media URL (matches Dashboard/TextScreen behavior)
+  const recipAvatarUrl = useMemo(
+    () =>
+      resolvePrivateMediaUrl(
+        base,
+        authToken,
+        recipient?.avatar_path || recipient?.avatarPath || recipient?.avatar_url || recipient?.avatarUrl || ''
+      ),
+    [
+      base,
+      authToken,
+      recipient?.avatar_path,
+      recipient?.avatarPath,
+      recipient?.avatar_url,
+      recipient?.avatarUrl,
+    ]
+  );
 
-  const invariantText = useMemo(() => {
-    return 'Note: This transfer decreases your balance and increases the recipient’s balance by the same amount — the total sum of all balances in the ecosystem remains unchanged.';
-  }, []);
+  const [busy, setBusy] = useState(false);
 
   const confirm = async () => {
     if (!recipient?.id || !(amount > 0)) {
@@ -104,11 +164,7 @@ export default function Send$Summary({ navigation, route }) {
         authToken
       );
 
-      // Best-effort: show updated sender balance returned by server
-      const newBal = out?.senderNewBalance;
-      Alert.alert('Send$', `Transfer complete.\nNew balance: ${dollars(newBal)}`);
-
-      // Navigate back (Dashboard usually refetches user)
+      Alert.alert('Send$', `Transfer complete.\nNew balance: ${dollars(out?.senderNewBalance)}`);
       navigation.popToTop?.();
       navigation.navigate('Dashboard', { refresh: Date.now() });
     } catch (err) {
@@ -120,13 +176,12 @@ export default function Send$Summary({ navigation, route }) {
 
   return (
     <View style={styles.outerContainer}>
-      <View style={styles.phoneFrame}>
+      <View style={styles.phoneFrame} className="fasbit-no-scrollbar">
         <View style={styles.container}>
           {/* Standard Header */}
           <View style={[styles.topBar, { paddingTop: insets.top + 8 }]}>
             <View style={styles.topBarRow}>
               <Text style={styles.topBarTitle}>./fasbit</Text>
-
               <TouchableOpacity
                 style={styles.topBarMenuBtn}
                 activeOpacity={0.85}
@@ -140,32 +195,51 @@ export default function Send$Summary({ navigation, route }) {
           <View style={styles.content}>
             <Text style={styles.screenTitle}>Confirm Send</Text>
 
+            {/* ✅ Recipient with avatar, one-line */}
             <View style={styles.card}>
-              <Text style={styles.cardLabel}>From</Text>
-              <Text style={styles.valueLine}>
-                {formatHandle(user?.user_name) || displayNameFromUser(user)}
-              </Text>
+              <View style={styles.rowLine}>
+                <Text style={styles.label}>Send To</Text>
 
-              <View style={{ height: 10 }} />
+                <View style={styles.inlineRight}>
+                  <View style={styles.avatarSm}>
+                    {recipAvatarUrl ? (
+                      <Image source={{ uri: recipAvatarUrl }} style={styles.avatarSmImg} />
+                    ) : (
+                      <Text style={styles.avatarSmText}>{initialsFromUser(recipient)}</Text>
+                    )}
+                  </View>
 
-              <Text style={styles.cardLabel}>To</Text>
-              <Text style={styles.valueLine}>
-                {formatHandle(recipient?.user_name) || displayNameFromUser(recipient)}
-              </Text>
+                  <Text style={styles.inlineText} numberOfLines={1}>
+                    {displayNameFromUser(recipient)}
+                    {recipient?.user_name ? `  ${formatHandle(recipient.user_name)}` : ''}
+                  </Text>
+                </View>
+              </View>
 
-              <View style={{ height: 10 }} />
+              <View style={styles.divider} />
 
-              <Text style={styles.cardLabel}>Amount</Text>
-              <Text style={styles.bigValue}>{dollars(amount)}</Text>
+              <View style={styles.rowLine}>
+                <Text style={styles.label}>Amount</Text>
+                <Text style={styles.value}>{dollars(amount)}</Text>
+              </View>
             </View>
 
+            {/* ✅ balances one-line */}
             <View style={styles.card}>
-              <Text style={styles.cardLabel}>Balance</Text>
-              <Text style={styles.valueLine}>Now: {dollars(senderBalance)}</Text>
-              <Text style={styles.valueLine}>After: {dollars(projectedBalance)}</Text>
+              <View style={styles.rowLine}>
+                <Text style={styles.label}>Balance Now</Text>
+                <Text style={styles.value}>{dollars(senderBalance)}</Text>
+              </View>
+              <View style={styles.rowLine}>
+                <Text style={styles.label}>After Sending</Text>
+                <Text style={styles.value}>{dollars(projectedBalance)}</Text>
+              </View>
             </View>
 
-            <Text style={styles.note}>{invariantText}</Text>
+            <Text style={styles.note}>
+              Note: This transfer decreases your balance and increases the recipient’s balance by the same amount — the
+              total sum of all balances remains unchanged.
+            </Text>
 
             <View style={styles.btnRow}>
               <TouchableOpacity
@@ -183,15 +257,10 @@ export default function Send$Summary({ navigation, route }) {
                 disabled={busy}
                 onPress={confirm}
               >
-                {busy ? (
-                  <ActivityIndicator />
-                ) : (
-                  <Text style={styles.btnPrimaryText}>Confirm Send</Text>
-                )}
+                {busy ? <ActivityIndicator /> : <Text style={styles.btnPrimaryText}>Confirm Send</Text>}
               </TouchableOpacity>
             </View>
           </View>
-
         </View>
       </View>
     </View>
@@ -228,11 +297,7 @@ const styles = StyleSheet.create({
       borderColor: '#1F2937',
       boxShadow: '0px 10px 30px rgba(0,0,0,0.45)',
     },
-    default: {
-      flex: 1,
-      width: '100%',
-      backgroundColor: '#111827',
-    },
+    default: { flex: 1, width: '100%', backgroundColor: '#111827' },
   }),
 
   container: { flex: 1, width: '100%', backgroundColor: '#111827' },
@@ -243,9 +308,7 @@ const styles = StyleSheet.create({
 
   topBarTitle: { color: '#E5E7EB', fontSize: 16, fontWeight: '800' },
 
-  topBarMenuBtn: {
-    width: 40, height: 40, alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent',
-  },
+  topBarMenuBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
 
   content: { padding: 16, paddingTop: 12 },
 
@@ -256,40 +319,71 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#1F2937',
     borderRadius: 12,
-    padding: 14,
-    marginBottom: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 10,
   },
 
-  cardLabel: {
+  rowLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    paddingVertical: 6,
+  },
+
+  label: {
     color: '#9CA3AF',
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '800',
     textTransform: 'uppercase',
     letterSpacing: 0.6,
-    marginBottom: 6,
   },
 
-  valueLine: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
+  value: { color: '#FFFFFF', fontSize: 16, fontWeight: '900' },
 
-  bigValue: { color: '#FFFFFF', fontSize: 22, fontWeight: '900' },
+  divider: { height: 1, backgroundColor: '#1F2937', marginVertical: 6 },
+
+  inlineRight: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 10,
+  },
+
+  inlineText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '900',
+    maxWidth: '75%',
+    textAlign: 'right',
+  },
+
+  avatarSm: {
+    width: 28,
+    height: 28,
+    borderRadius: 999,
+    backgroundColor: '#111827',
+    borderWidth: 1,
+    borderColor: '#1F2937',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+
+  avatarSmImg: { width: 28, height: 28, resizeMode: 'cover' },
+
+  avatarSmText: { color: '#E5E7EB', fontSize: 11, fontWeight: '900' },
 
   note: { color: '#6B7280', fontSize: 12, marginTop: 4, marginBottom: 12 },
 
   btnRow: { flexDirection: 'row', gap: 10 },
 
-  btn: {
-    flex: 1,
-    borderRadius: 999,
-    paddingVertical: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  btn: { flex: 1, borderRadius: 999, paddingVertical: 12, alignItems: 'center', justifyContent: 'center' },
 
-  btnGhost: {
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: '#1F2937',
-  },
+  btnGhost: { backgroundColor: 'transparent', borderWidth: 1, borderColor: '#1F2937' },
 
   btnGhostText: { color: '#E5E7EB', fontWeight: '900', textTransform: 'uppercase', fontSize: 12 },
 

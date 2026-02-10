@@ -1,0 +1,15 @@
+{
+  "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "02efb653-dc38-4bbd-9128-cf11d2542385"
+      }
+    },
+    "android": {
+      "package": "com.brian.vt.photoserver"
+    },
+    "plugins": [
+      "expo-router"
+    ]
+  }
+}
